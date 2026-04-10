@@ -54,6 +54,23 @@ services:
         max-size: "50m"
         max-file: "7"    # aligns with BACKUP_RETAIN_DAYS default
 
+  # Integration test runner — used for automated validation.
+  # Run with: docker compose run --rm integration-test
+  integration-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: motorsport-test-runner
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - API_URL=http://backend:8000
+    command: pytest unit_tests/ API_tests/ -v
+
 volumes:
   motorsport_data:
     driver: local

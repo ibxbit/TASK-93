@@ -295,21 +295,19 @@ curl -s -X POST http://localhost:8000/events \
 
 ## Running Tests
 
+The entire test suite (Unit + API tests) runs inside Docker containers. You do **not** need Python, Pytest, or any dependencies installed on your host machine.
+
+### Run all tests
 ```bash
+# This will build the test runner and execute all suites within the Docker network
 ./run_tests.sh
 ```
 
-The script runs all unit and API tests automatically. The server must be reachable at `http://localhost:8000` (started via `docker compose up`).
-
-Alternatively, run each suite individually:
-
-```bash
-# Unit tests (no server required)
-python -m pytest unit_tests/ -v
-
-# API tests (server must be running)
-python -m pytest API_tests/ -v
-```
+The script uses `docker compose run` to:
+1. Build the `integration-test` image (based on `Dockerfile.test`).
+2. Start the `backend` service if it's not already running.
+3. Wait for the `backend` to become healthy (migrations + seeds finished).
+4. Execute `pytest unit_tests/` and `pytest API_tests/` inside an isolated container.
 
 ---
 
@@ -318,31 +316,12 @@ python -m pytest API_tests/ -v
 ```
 repo/
 ├── src/                     # Rust source — layered architecture
-│   ├── main.rs              # Entrypoint: config, DB, Rocket mount
-│   ├── config.rs            # Environment-based configuration
-│   ├── db.rs                # Connection pool + SQLite PRAGMAs
-│   ├── crypto.rs            # AES-256-GCM field encryption
-│   ├── errors.rs            # Typed error → HTTP status mapping
-│   ├── auth/                # Session auth + Argon2 password hashing
-│   ├── rbac/                # Role/permission guards + seeder
-│   ├── competition/         # Events and ruleset versions
-│   ├── vehicles/            # Vehicle lifecycle management
-│   ├── assets/              # Equipment asset register
-│   ├── billing/             # Invoices and line items
-│   ├── payments/            # Payments, exceptions, refunds
-│   ├── results/             # Race results, reviews, arbitration
-│   ├── audit/               # Unified append-only audit trail
-│   ├── backup/              # Nightly SQLite VACUUM INTO backups
-│   ├── analytics/           # Metric definitions and queries
-│   ├── data_quality/        # DQ scan results
-│   ├── entity/              # SeaORM entity models
-│   ├── migration/           # 35 ordered database migrations
-│   └── middleware/          # Correlation ID + request logging
 ├── unit_tests/              # Offline business-logic tests (Python/pytest)
 ├── API_tests/               # HTTP endpoint tests (Python/pytest + requests)
-├── run_tests.sh             # Test runner (unit + API)
-├── Dockerfile               # Multi-stage build: rust:1.77-slim → debian:bookworm-slim
-├── docker-compose.yml       # Service orchestration + named volumes
+├── run_tests.sh             # Dockerized test runner wrapper
+├── Dockerfile               # Production build: rust:1.88-slim → debian:bookworm-slim
+├── Dockerfile.test          # Test runner image: python:3.12-slim
+├── docker-compose.yml       # Orchestration for app, db, and test services
 ├── .env                     # Development environment (ENCRYPTION_KEY pre-set)
 └── .env.example             # Template for production credentials
 ```

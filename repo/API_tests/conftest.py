@@ -12,11 +12,12 @@ Provides:
                         (use in names to ensure idempotency across runs)
 """
 
+import os
 import time
 import pytest
 import requests
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 # Default seeded credentials (see src/auth/seeder.rs)
 CREDENTIALS = {

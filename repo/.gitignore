@@ -1,7 +1,12 @@
 /target
 .env
-data/*.db
-data/*.db-wal
-data/*.db-shm
-logs/*.log
-logs/*.json
+data/
+logs/
+backups/
+**/*.rs.bk
+.pytest_cache/
+__pycache__/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.DS_Store
