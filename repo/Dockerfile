@@ -1,5 +1,5 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM rust:1.85-slim AS builder
+FROM rust:1.88-slim AS builder
 
 WORKDIR /app
 
@@ -26,6 +26,10 @@ RUN rm -rf src \
 
 # ── Application build ─────────────────────────────────────────────────────────
 COPY src ./src
+# Refresh dependency versions against the running toolchain so any MSRV
+# mismatch between the committed Cargo.lock and the builder image is
+# resolved automatically before the real compile.
+RUN cargo update
 RUN cargo build --release
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
