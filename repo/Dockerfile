@@ -43,6 +43,10 @@ WORKDIR /app
 # Copy only the compiled binary.
 COPY --from=builder /app/target/release/motorsport-backend /app/motorsport-backend
 
+# Install wget for the HEALTHCHECK command.
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create runtime directories.
 #   /app/data    — SQLite database file  (named volume)
 #   /app/logs    — structured JSON logs  (named volume)
@@ -63,8 +67,7 @@ ENV BACKUP_RETAIN_DAYS=7
 
 EXPOSE 8000
 
-# wget ships with debian:bookworm-slim; uses $PORT so the check honours
-# any port override without rebuilding the image.
+# Uses $PORT so the check honours any port override without rebuilding the image.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD wget -qO- "http://localhost:${PORT}/health" > /dev/null || exit 1
 
