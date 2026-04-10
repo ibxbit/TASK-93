@@ -32,6 +32,7 @@ impl MigrationTrait for Migration {
             "ALTER TABLE invoices ADD COLUMN discount_amount DECIMAL(19,4) NOT NULL DEFAULT 0",
         )
         .await
+        .map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

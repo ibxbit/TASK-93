@@ -114,7 +114,7 @@ pub async fn apply_discount(
 pub async fn issue_invoice(
     guard: RequireFinancialsWrite,
     id: i64,
-    _body: Json<IssueInvoiceRequest>,
+    body: Json<IssueInvoiceRequest>,
     conn: &State<DatabaseConnection>,
 ) -> AppResult<Json<InvoiceResponse>> {
     let resp = service::issue_invoice(conn.inner(), id, guard.0.user_id).await?;

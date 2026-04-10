@@ -253,7 +253,7 @@ pub async fn submit_result(
                 .filter(result_entity::Column::ParticipantId.eq(req.participant_id))
                 .select_only()
                 .column_as(
-                    Func::max(Expr::col(result_entity::Column::AttemptNo)),
+                    Func::max(Expr::col(result_entity::Column::AttemptNo)).into(),
                     "max_no",
                 )
                 .into_model::<MaxAttempt>()

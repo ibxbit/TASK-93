@@ -58,6 +58,7 @@ impl MigrationTrait for Migration {
         db.execute_unprepared("DROP TABLE events").await?;
         db.execute_unprepared("ALTER TABLE events_old RENAME TO events")
             .await
+            .map(|_| ())
     }
 }
 

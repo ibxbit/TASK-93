@@ -146,7 +146,7 @@ impl Cipher {
     /// TODO: existing `*_hash` column values must be recomputed when this change
     /// is first deployed against a populated database.
     pub fn digest(&self, plaintext: &str) -> String {
-        let mut mac = HmacSha256::new_from_slice(&self.key_bytes)
+        let mut mac = <HmacSha256 as KeyInit>::new_from_slice(&self.key_bytes)
             .expect("HMAC accepts any key length");
         mac.update(plaintext.as_bytes());
         let result = mac.finalize().into_bytes();

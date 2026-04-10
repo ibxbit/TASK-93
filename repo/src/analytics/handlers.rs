@@ -1,11 +1,9 @@
 use rocket::{
     http::{ContentType, Header},
-    response::Response,
     serde::json::Json,
     State,
 };
 use sea_orm::DatabaseConnection;
-use std::io::Cursor;
 
 use crate::errors::AppResult;
 use crate::rbac::guards::{RequireAuditRead, RequireFinancialsRead, RequireFinancialsWrite};
@@ -128,6 +126,26 @@ pub async fn retention(
     Ok(Json(service::compute_retention(conn.inner(), q).await?))
 }
 
+// ── CSV download helper ────────────────────────────────────────────────────────
+
+struct CsvDownload {
+    filename: &'static str,
+    body: String,
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for CsvDownload {
+    fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        rocket::Response::build()
+            .header(ContentType::new("text", "csv"))
+            .header(Header::new(
+                "Content-Disposition",
+                format!("attachment; filename=\"{}\"", self.filename),
+            ))
+            .sized_body(self.body.len(), std::io::Cursor::new(self.body))
+            .ok()
+    }
+}
+
 // ── CSV export ─────────────────────────────────────────────────────────────────
 
 /// Export analytics data as a CSV file.
@@ -143,21 +161,14 @@ pub async fn retention(
 ///
 /// **Required permission:** `audit:read`
 #[get("/analytics/export?<q..>")]
-pub async fn export<'r>(
+pub async fn export(
     _guard: RequireAuditRead,
     q: ExportQuery,
     conn: &State<DatabaseConnection>,
-) -> AppResult<Response<'r>> {
+) -> AppResult<CsvDownload> {
     let csv = service::export_csv(conn.inner(), q).await?;
-
-    let response = Response::build()
-        .header(ContentType::new("text", "csv"))
-        .header(Header::new(
-            "Content-Disposition",
-            "attachment; filename=\"export.csv\"",
-        ))
-        .sized_body(csv.len(), Cursor::new(csv))
-        .finalize();
-
-    Ok(response)
+    Ok(CsvDownload {
+        filename: "export.csv",
+        body: csv,
+    })
 }

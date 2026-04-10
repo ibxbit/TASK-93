@@ -1,10 +1,29 @@
 use rocket::{
     http::{ContentType, Header},
-    response::Response,
     serde::json::Json,
     State,
 };
 use sea_orm::DatabaseConnection;
+
+// ── CSV download helper ────────────────────────────────────────────────────────
+
+struct CsvDownload {
+    filename: String,
+    body: String,
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for CsvDownload {
+    fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        rocket::Response::build()
+            .header(ContentType::new("text", "csv"))
+            .header(Header::new(
+                "Content-Disposition",
+                format!("attachment; filename=\"{}\"", self.filename),
+            ))
+            .sized_body(self.body.len(), std::io::Cursor::new(self.body))
+            .ok()
+    }
+}
 
 use crate::errors::AppResult;
 use crate::rbac::guards::{
@@ -226,17 +245,14 @@ pub async fn resolve_correction(
 ///
 /// **Required permission:** `audit:read`
 #[get("/events/<event_id>/results/export")]
-pub async fn export_results<'r>(
+pub async fn export_results(
     _guard: RequireAuditRead,
     event_id: i64,
     conn: &State<DatabaseConnection>,
-) -> AppResult<Response<'r>> {
+) -> AppResult<CsvDownload> {
     let csv = service::export_results_csv(conn.inner(), event_id).await?;
-    let disposition = format!("attachment; filename=\"results_event_{event_id}.csv\"");
-    let response = Response::build()
-        .header(ContentType::new("text", "csv"))
-        .header(Header::new("Content-Disposition", disposition))
-        .sized_body(csv.len(), std::io::Cursor::new(csv))
-        .finalize();
-    Ok(response)
+    Ok(CsvDownload {
+        filename: format!("results_event_{event_id}.csv"),
+        body: csv,
+    })
 }

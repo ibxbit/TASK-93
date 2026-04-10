@@ -62,6 +62,7 @@ impl MigrationTrait for Migration {
              ON results (reviewed_state)",
         )
         .await
+        .map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -115,5 +116,6 @@ impl MigrationTrait for Migration {
              ON results (reviewed_state)",
         )
         .await
+        .map(|_| ())
     }
 }

@@ -368,7 +368,7 @@ pub async fn record_payment(
         if let Some(obj) = s.as_object_mut() {
             obj.insert(
                 "external_reference".into(),
-                serde_json::Value::String(cipher.mask().to_owned()),
+                serde_json::Value::String(Cipher::mask().to_owned()),
             );
         }
         s
@@ -527,7 +527,7 @@ pub async fn handle_exception(
         if let Some(obj) = s.as_object_mut() {
             obj.insert(
                 "external_reference".into(),
-                serde_json::Value::String(cipher.mask().to_owned()),
+                serde_json::Value::String(Cipher::mask().to_owned()),
             );
         }
         s
@@ -660,13 +660,19 @@ pub async fn approve_refund(
 
     let now = Utc::now();
 
+    // Extract permission checks and user_id before the async closure so that
+    // the closure captures only 'static / Copy values (no &AuthenticatedUser).
+    let has_financials_write = user.has_permission(Permission::FinancialsWrite);
+    let has_audit_read = user.has_permission(Permission::AuditRead);
+    let user_id = user.user_id;
+
     let updated = conn
         .transaction::<_, refund_entity::Model, AppError>(|txn| {
             let refund = refund.clone();
             Box::pin(async move {
                 let new_refund = match refund.status {
                     RefundStatus::PendingFinance => {
-                        if !user.has_permission(Permission::FinancialsWrite) {
+                        if !has_financials_write {
                             return Err(AppError::Forbidden(
                                 "Finance Clerk permission (financials:write) required \
                                  to approve at this stage"
@@ -677,7 +683,7 @@ pub async fn approve_refund(
                         if refund.amount > AUDITOR_THRESHOLD {
                             let mut active: RefundActiveModel = refund.into();
                             active.status = Set(RefundStatus::PendingAuditor);
-                            active.finance_approved_by = Set(Some(user.user_id));
+                            active.finance_approved_by = Set(Some(user_id));
                             active.updated_at = Set(now);
                             active
                                 .update(txn)
@@ -686,7 +692,7 @@ pub async fn approve_refund(
                         } else {
                             let mut active: RefundActiveModel = refund.clone().into();
                             active.status = Set(RefundStatus::Approved);
-                            active.finance_approved_by = Set(Some(user.user_id));
+                            active.finance_approved_by = Set(Some(user_id));
                             active.updated_at = Set(now);
                             let updated = active
                                 .update(txn)
@@ -703,7 +709,7 @@ pub async fn approve_refund(
                         }
                     }
                     RefundStatus::PendingAuditor => {
-                        if !user.has_permission(Permission::AuditRead) {
+                        if !has_audit_read {
                             return Err(AppError::Forbidden(
                                 "Auditor permission (audit:read) required to approve at this stage"
                                     .into(),
@@ -712,7 +718,7 @@ pub async fn approve_refund(
 
                         let mut active: RefundActiveModel = refund.clone().into();
                         active.status = Set(RefundStatus::Approved);
-                        active.auditor_approved_by = Set(Some(user.user_id));
+                        active.auditor_approved_by = Set(Some(user_id));
                         active.updated_at = Set(now);
                         let updated = active
                             .update(txn)

@@ -10,6 +10,7 @@
 //! async fn create_event(_p: RequireEventsWrite, body: Json<...>) -> ... { ... }
 //! ```
 
+use crate::permission_guard;
 use crate::rbac::Permission;
 
 // System
