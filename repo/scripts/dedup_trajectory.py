@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """
-dedup_trajectory.py — Remove consecutive duplicate-role messages from JSONL
-trajectory files.
+dedup_trajectory.py — Remove consecutive duplicate-role message anomalies from
+trajectory files produced by the Claude Code session merger.
 
-Consecutive assistant messages (or consecutive user messages) are artifacts of
-the log-merging process when two session files are concatenated end-to-end.
-This script keeps the first occurrence of each role in a run and silently drops
-any that immediately follow with the same role before a role change.
+Two file formats are supported:
+
+  • Structured JSON  {"messages": [...], "meta": {...}}
+    Consecutive same-role messages (no intervening user/tool turn) are merged:
+    their content arrays are concatenated into the first message and the
+    redundant second message is removed.
+
+  • JSONL  (one JSON object per line)
+    Lines whose role matches the immediately preceding role are dropped.
 
 Usage:
-    # Single file — writes <input>.deduped.jsonl alongside the source:
-    python scripts/dedup_trajectory.py sessions/develop-1.jsonl
+    # Fix a single file (writes <file>.deduped alongside the original):
+    python scripts/dedup_trajectory.py sessions/bugfix-1.json
 
     # Explicit output path:
-    python scripts/dedup_trajectory.py sessions/develop-1.jsonl out/clean.jsonl
+    python scripts/dedup_trajectory.py sessions/develop-1.json out/develop-1-clean.json
 
-    # All *.jsonl in a directory (in-place, originals backed up as *.bak):
+    # Batch — all *.json / *.jsonl in a directory (in-place, *.bak originals kept):
     python scripts/dedup_trajectory.py --dir sessions/
 """
 
@@ -28,111 +33,173 @@ import sys
 from pathlib import Path
 
 
-def _message_role(obj: dict) -> str | None:
-    """Extract the conversation role from a parsed trajectory line, or None."""
-    # Claude Code JSONL lines carry role in the top-level "type" field …
-    msg_type = obj.get("type")
-    if msg_type in ("user", "assistant"):
-        return msg_type
-    # … or nested inside a "message" object.
-    message = obj.get("message")
-    if isinstance(message, dict):
-        role = message.get("role")
-        if role in ("user", "assistant"):
-            return role
-    return None
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _role(msg: dict) -> str | None:
+    """Return the conversation role of a message dict, or None."""
+    return msg.get("role") or msg.get("type") or None
 
 
-def dedup_file(src: Path, dst: Path) -> tuple[int, int]:
+def _is_convo_role(role: str | None) -> bool:
+    return role in ("user", "assistant")
+
+
+# ── Structured-JSON format ({"messages": [...], "meta": {...}}) ────────────────
+
+def _dedup_structured(data: dict) -> tuple[dict, int]:
     """
-    Read *src*, deduplicate consecutive same-role messages, write to *dst*.
+    Merge consecutive same-role assistant messages.
 
-    Returns ``(total_lines_read, lines_dropped)``.
+    When two assistant messages appear back-to-back (no intervening user or
+    tool message), their content arrays are concatenated into the first and
+    the second is discarded.  Returns (new_data, n_merged).
     """
+    messages: list[dict] = data.get("messages", [])
+    out: list[dict] = []
+    merged_count = 0
+    prev_convo_role: str | None = None
+
+    for msg in messages:
+        role = _role(msg)
+
+        if _is_convo_role(role) and role == prev_convo_role == "assistant":
+            # Merge: append this message's content into the previous assistant msg
+            prev = out[-1]
+            prev_content = prev.get("content", [])
+            this_content = msg.get("content", [])
+
+            if isinstance(prev_content, list) and isinstance(this_content, list):
+                prev["content"] = prev_content + this_content
+            elif isinstance(prev_content, str) and isinstance(this_content, str):
+                prev["content"] = prev_content + "\n" + this_content
+            # else: incompatible types — keep previous, skip this
+            merged_count += 1
+            continue
+
+        out.append(msg)
+        if _is_convo_role(role):
+            prev_convo_role = role
+        elif role == "tool":
+            prev_convo_role = role  # tool resets the consecutive-check
+
+    return {**data, "messages": out}, merged_count
+
+
+def process_structured(src: Path, dst: Path) -> tuple[int, int]:
+    """Return (original_msg_count, merged_count)."""
+    with src.open(encoding="utf-8", errors="replace") as fh:
+        data = json.load(fh)
+
+    original_count = len(data.get("messages", []))
+    new_data, merged = _dedup_structured(data)
+
+    with dst.open("w", encoding="utf-8") as fh:
+        json.dump(new_data, fh, ensure_ascii=False, separators=(",", ":"))
+
+    return original_count, merged
+
+
+# ── JSONL format (one JSON object per line) ────────────────────────────────────
+
+def process_jsonl(src: Path, dst: Path) -> tuple[int, int]:
+    """Return (total_lines, dropped_lines)."""
     kept: list[str] = []
     dropped = 0
     last_role: str | None = None
 
-    with src.open(encoding="utf-8") as fh:
+    with src.open(encoding="utf-8", errors="replace") as fh:
         for raw in fh:
             stripped = raw.rstrip("\n")
             if not stripped:
                 kept.append(stripped)
                 continue
-
             try:
                 obj = json.loads(stripped)
             except json.JSONDecodeError:
-                # Non-JSON lines (e.g. comments) are preserved unchanged.
                 kept.append(stripped)
                 continue
 
-            role = _message_role(obj)
+            role = _role(obj)
 
-            if role is not None and role == last_role:
+            if _is_convo_role(role) and role == last_role:
                 dropped += 1
                 continue
 
             if role is not None:
                 last_role = role
-
             kept.append(stripped)
 
     dst.write_text("\n".join(kept) + "\n", encoding="utf-8")
     return len(kept) + dropped, dropped
 
 
-def process_single(src: Path, dst: Path | None) -> None:
-    if dst is None:
-        dst = src.with_suffix(".deduped.jsonl")
-    total, dropped = dedup_file(src, dst)
-    status = "✓" if dropped == 0 else f"⚠  {dropped} duplicate(s) dropped"
-    print(f"  {src.name}  →  {dst.name}  [{total} lines, {status}]")
+# ── File dispatcher ────────────────────────────────────────────────────────────
+
+def _is_jsonl(path: Path) -> bool:
+    """
+    Detect whether a file uses the structured-JSON format {"messages":[...], "meta":{...}}
+    or plain JSONL (one JSON object per line).
+
+    Loads the whole file as a single JSON document; if it has a top-level
+    "messages" key it is the structured format.  Any other outcome (parse
+    error or missing key) means JSONL.
+    """
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            obj = json.load(fh)
+        return "messages" not in obj if isinstance(obj, dict) else True
+    except (json.JSONDecodeError, OSError):
+        return True  # could not parse as single JSON doc -> JSONL
 
 
-def process_directory(directory: Path) -> None:
-    files = sorted(directory.glob("*.jsonl"))
-    if not files:
-        print(f"No .jsonl files found in {directory}")
-        return
-    for src in files:
-        if src.suffix == ".jsonl" and ".deduped" not in src.stem:
-            bak = src.with_suffix(".jsonl.bak")
-            shutil.copy2(src, bak)
-            total, dropped = dedup_file(src, src)  # in-place
-            status = "✓" if dropped == 0 else f"⚠  {dropped} duplicate(s) dropped"
-            print(f"  {src.name}  [backed up → {bak.name}, {total} lines, {status}]")
+def process_file(src: Path, dst: Path) -> str:
+    """Process one file; return a human-readable result line."""
+    if _is_jsonl(src):
+        total, changed = process_jsonl(src, dst)
+        verb = "lines dropped"
+    else:
+        total, changed = process_structured(src, dst)
+        verb = "messages merged"
 
+    if changed == 0:
+        status = "clean"
+    else:
+        status = f"{changed} {verb}"
+    return f"  {src.name}  ->  {dst.name}  [{total} messages, {status}]"
+
+
+# ── CLI ────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Remove consecutive duplicate-role messages from JSONL trajectories.",
+        description="Remove consecutive duplicate-role message anomalies from trajectory files.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument(
-        "source",
-        nargs="?",
-        help="Path to a single .jsonl file.",
-    )
-    parser.add_argument(
-        "output",
-        nargs="?",
-        help="Output path (default: <source>.deduped.jsonl).",
-    )
+    parser.add_argument("source", nargs="?", help="Path to a single trajectory file.")
+    parser.add_argument("output", nargs="?", help="Output path (default: <source>.deduped).")
     parser.add_argument(
         "--dir",
         metavar="DIRECTORY",
-        help="Process all *.jsonl files in a directory in-place (originals backed up as *.bak).",
+        help="Process all *.json / *.jsonl files in a directory in-place (originals backed up as *.bak).",
     )
     args = parser.parse_args()
 
     if args.dir:
         d = Path(args.dir)
         if not d.is_dir():
-            print(f"error: {d} is not a directory", file=sys.stderr)
-            sys.exit(1)
-        process_directory(d)
+            sys.exit(f"error: {d} is not a directory")
+        files = sorted(d.glob("*.json")) + sorted(d.glob("*.jsonl"))
+        if not files:
+            print(f"No trajectory files found in {d}")
+            return
+        for src in files:
+            if ".deduped" in src.stem or src.suffix == ".bak":
+                continue
+            bak = src.with_suffix(src.suffix + ".bak")
+            shutil.copy2(src, bak)
+            result = process_file(src, src)  # in-place
+            print(result.replace(f"  {src.name}", f"  {src.name} [bak: {bak.name}]", 1))
         return
 
     if not args.source:
@@ -141,11 +208,11 @@ def main() -> None:
 
     src = Path(args.source)
     if not src.exists():
-        print(f"error: {src} not found", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(f"error: {src} not found")
 
-    dst = Path(args.output) if args.output else None
-    process_single(src, dst)
+    suffix = src.suffix or ".json"
+    dst = Path(args.output) if args.output else src.with_suffix(f".deduped{suffix}")
+    print(process_file(src, dst))
 
 
 if __name__ == "__main__":
