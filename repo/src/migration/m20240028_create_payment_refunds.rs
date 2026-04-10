@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
                                          REFERENCES payment_entries(id) ON DELETE RESTRICT,
                 invoice_line_id      INTEGER
                                          REFERENCES invoice_lines(id),
-                amount               DECIMAL(19,4) NOT NULL CHECK ({AMOUNT_CHECK}),
+                amount               DECIMAL(16,4) NOT NULL CHECK ({AMOUNT_CHECK}),
                 reason               TEXT          NOT NULL,
                 status               TEXT(24)      NOT NULL DEFAULT 'pending_finance'
                                          CHECK ({STATUS_CHECK}),

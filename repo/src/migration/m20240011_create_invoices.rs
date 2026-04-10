@@ -37,13 +37,13 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Invoices::IssueDate).date().not_null())
                     .col(
                         ColumnDef::new(Invoices::Subtotal)
-                            .decimal_len(19, 4)
+                            .decimal_len(16, 4)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Invoices::Tax).decimal_len(19, 4).not_null())
+                    .col(ColumnDef::new(Invoices::Tax).decimal_len(16, 4).not_null())
                     .col(
                         ColumnDef::new(Invoices::Total)
-                            .decimal_len(19, 4)
+                            .decimal_len(16, 4)
                             .not_null(),
                     )
                     .col(

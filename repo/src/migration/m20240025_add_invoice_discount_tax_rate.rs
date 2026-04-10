@@ -25,11 +25,11 @@ impl MigrationTrait for Migration {
         db.execute_unprepared("ALTER TABLE invoices ADD COLUMN discount_type TEXT")
             .await?;
 
-        db.execute_unprepared("ALTER TABLE invoices ADD COLUMN discount_value DECIMAL(19,4)")
+        db.execute_unprepared("ALTER TABLE invoices ADD COLUMN discount_value DECIMAL(16,4)")
             .await?;
 
         db.execute_unprepared(
-            "ALTER TABLE invoices ADD COLUMN discount_amount DECIMAL(19,4) NOT NULL DEFAULT 0",
+            "ALTER TABLE invoices ADD COLUMN discount_amount DECIMAL(16,4) NOT NULL DEFAULT 0",
         )
         .await
         .map(|_| ())
@@ -48,9 +48,9 @@ impl MigrationTrait for Migration {
                 invoice_no   TEXT(64)      NOT NULL UNIQUE,
                 counterparty TEXT          NOT NULL,
                 issue_date   DATE          NOT NULL,
-                subtotal     DECIMAL(19,4) NOT NULL,
-                tax          DECIMAL(19,4) NOT NULL,
-                total        DECIMAL(19,4) NOT NULL,
+                subtotal     DECIMAL(16,4) NOT NULL,
+                tax          DECIMAL(16,4) NOT NULL,
+                total        DECIMAL(16,4) NOT NULL,
                 status       TEXT(16)      NOT NULL DEFAULT 'draft'
                                  CHECK (status IN ('draft','issued','paid','cancelled','overdue')),
                 created_by   INTEGER       NOT NULL REFERENCES users(id),

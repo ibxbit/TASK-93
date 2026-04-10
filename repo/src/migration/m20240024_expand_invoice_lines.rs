@@ -29,11 +29,11 @@ impl MigrationTrait for Migration {
                 description             TEXT          NOT NULL,
                 pricing_model           TEXT(16)      NOT NULL CHECK ({PRICING_MODEL_CHECK}),
                 quantity                REAL          NOT NULL,
-                unit_price              DECIMAL(19,4) NOT NULL,
+                unit_price              DECIMAL(16,4) NOT NULL,
                 adjustment_type         TEXT(16)      CHECK ({ADJUSTMENT_TYPE_CHECK}),
                 adjustment_is_percentage INTEGER      NOT NULL DEFAULT 0,
-                adjustment_value        DECIMAL(19,4),
-                line_total              DECIMAL(19,4) NOT NULL,
+                adjustment_value        DECIMAL(16,4),
+                line_total              DECIMAL(16,4) NOT NULL,
                 created_at              TIMESTAMPTZ   NOT NULL,
                 CHECK ({AMOUNTS_CHECK})
             )"
@@ -83,12 +83,12 @@ impl MigrationTrait for Migration {
                 pricing_model    TEXT(16)      NOT NULL
                                      CHECK (pricing_model IN ('fixed','per_unit','percentage')),
                 quantity         REAL          NOT NULL,
-                unit_price       DECIMAL(19,4) NOT NULL,
+                unit_price       DECIMAL(16,4) NOT NULL,
                 adjustment_type  TEXT(16)
                                      CHECK (adjustment_type IS NULL
                                          OR adjustment_type IN ('discount','surcharge')),
-                adjustment_value DECIMAL(19,4),
-                line_total       DECIMAL(19,4) NOT NULL,
+                adjustment_value DECIMAL(16,4),
+                line_total       DECIMAL(16,4) NOT NULL,
                 created_at       TIMESTAMPTZ   NOT NULL,
                 CHECK (quantity > 0 AND unit_price >= 0 AND line_total >= 0)
             )",

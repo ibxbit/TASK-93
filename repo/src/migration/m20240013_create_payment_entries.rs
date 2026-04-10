@@ -34,7 +34,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(PaymentEntries::Amount)
-                            .decimal_len(19, 4)
+                            .decimal_len(16, 4)
                             .not_null(),
                     )
                     .col(

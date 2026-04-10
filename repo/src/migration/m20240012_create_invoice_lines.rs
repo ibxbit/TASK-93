@@ -44,7 +44,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(InvoiceLines::Quantity).double().not_null())
                     .col(
                         ColumnDef::new(InvoiceLines::UnitPrice)
-                            .decimal_len(19, 4)
+                            .decimal_len(16, 4)
                             .not_null(),
                     )
                     // NULL means no adjustment on this line.
@@ -56,12 +56,12 @@ impl MigrationTrait for Migration {
                     // Absolute amount (discount) or basis points (percentage surcharge).
                     .col(
                         ColumnDef::new(InvoiceLines::AdjustmentValue)
-                            .decimal_len(19, 4)
+                            .decimal_len(16, 4)
                             .null(),
                     )
                     .col(
                         ColumnDef::new(InvoiceLines::LineTotal)
-                            .decimal_len(19, 4)
+                            .decimal_len(16, 4)
                             .not_null(),
                     )
                     .col(
