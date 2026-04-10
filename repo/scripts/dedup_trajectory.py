@@ -62,8 +62,9 @@ def _dedup_structured(data: dict) -> tuple[dict, int]:
     for msg in messages:
         role = _role(msg)
 
-        if _is_convo_role(role) and role == prev_convo_role == "assistant":
-            # Merge: append this message's content into the previous assistant msg
+        if _is_convo_role(role) and role == prev_convo_role:
+            # Merge: append this message's content into the previous same-role msg.
+            # Handles both consecutive assistant AND consecutive user anomalies.
             prev = out[-1]
             prev_content = prev.get("content", [])
             this_content = msg.get("content", [])
