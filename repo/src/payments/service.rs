@@ -465,11 +465,12 @@ pub async fn handle_exception(
             let payment = payment.clone();
             let exc_type = exc_type.clone();
             let new_status = new_status.clone();
+            let reason = req.reason.trim().to_owned();
             Box::pin(async move {
                 ExceptionActiveModel {
                     payment_id: Set(payment_id),
                     exception_type: Set(exc_type),
-                    reason: Set(req.reason.trim().to_owned()),
+                    reason: Set(reason),
                     raised_by: Set(user_id),
                     created_at: Set(now),
                     ..Default::default()

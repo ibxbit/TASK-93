@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use sea_orm::sea_query::{Expr, Func};
+use sea_orm::sea_query::{Expr, Func, SimpleExpr};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
     FromQueryResult, QueryFilter, QueryOrder, QuerySelect, TransactionError, TransactionTrait,
@@ -252,7 +252,7 @@ pub async fn submit_result(
                 .filter(result_entity::Column::EventId.eq(event_id))
                 .filter(result_entity::Column::ParticipantId.eq(req.participant_id))
                 .select_only()
-                .column_as(
+                .column_as::<SimpleExpr, _>(
                     Func::max(Expr::col(result_entity::Column::AttemptNo)).into(),
                     "max_no",
                 )
