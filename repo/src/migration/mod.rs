@@ -35,6 +35,7 @@ mod m20240032_create_dq_scan_results;
 mod m20240033_encrypt_payment_references;
 mod m20240034_encrypt_personal_identifiers;
 mod m20240035_create_audit_log;
+mod m20240036_fix_decimal_and_fk;
 
 pub struct Migrator;
 
@@ -93,6 +94,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20240034_encrypt_personal_identifiers::Migration),
             // Audit logging — unified append-only trail
             Box::new(m20240035_create_audit_log::Migration),
+            // Bug fixes: DECIMAL→REAL type affinity + drop participant_id FK
+            Box::new(m20240036_fix_decimal_and_fk::Migration),
         ]
     }
 }

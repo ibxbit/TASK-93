@@ -18,10 +18,14 @@ const RESTORE_MARKER: &str = ".restore_pending";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Generate a timestamped backup filename, e.g. `backup_20260407_230000.sqlite`.
+/// Generate a timestamped backup filename, e.g. `backup_20260407_230000_123456.sqlite`.
+/// Microsecond precision prevents filename collisions when multiple backups are
+/// triggered within the same second (e.g. concurrent test runs).
 fn backup_filename() -> String {
-    let ts = Utc::now().format("%Y%m%d_%H%M%S");
-    format!("{BACKUP_PREFIX}{ts}.{BACKUP_EXT}")
+    let now = Utc::now();
+    let ts = now.format("%Y%m%d_%H%M%S");
+    let us = now.format("%6f");
+    format!("{BACKUP_PREFIX}{ts}_{us}.{BACKUP_EXT}")
 }
 
 /// Parse a `BackupEntry` from a filesystem path.  Returns `None` if the file

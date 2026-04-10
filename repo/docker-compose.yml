@@ -56,7 +56,9 @@ services:
 
   # Integration test runner — used for automated validation.
   # Run with: docker compose run --rm integration-test
+  # The `test` profile prevents this service from starting with `docker compose up`.
   integration-test:
+    profiles: ["test"]
     build:
       context: .
       dockerfile: Dockerfile.test

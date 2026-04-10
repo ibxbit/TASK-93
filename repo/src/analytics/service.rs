@@ -805,11 +805,11 @@ async fn retention_event_participation(
 ) -> AppResult<Vec<RetentionRow>> {
     // Step 1: Get cohort sizes — first month each participant appeared.
     let cohort_sql = "
-        SELECT strftime('%Y-%m', MIN(e.created_at)) AS cohort, COUNT(DISTINCT r.participant_id) AS cohort_size
+        SELECT strftime('%Y-%m', e.created_at) AS cohort, COUNT(DISTINCT r.participant_id) AS cohort_size
         FROM results r
         JOIN events e ON r.event_id = e.id
         WHERE date(e.created_at) >= ? AND date(e.created_at) <= ?
-        GROUP BY cohort
+        GROUP BY strftime('%Y-%m', e.created_at)
         ORDER BY cohort";
 
     let cohort_rows = conn

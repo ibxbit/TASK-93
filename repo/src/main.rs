@@ -60,6 +60,24 @@ use vehicles::handlers::{
     transition_status, update_vehicle,
 };
 
+// ── Custom error catchers ─────────────────────────────────────────────────────
+
+/// Convert Rocket's default HTML 422 response into a structured JSON body.
+/// Triggered when JSON deserialization of the request body fails (e.g. missing
+/// required field) before the route handler is even called.
+#[catch(422)]
+fn catch_unprocessable(req: &rocket::Request<'_>) -> Json<errors::ErrorBody> {
+    let cid = req
+        .local_cache(|| middleware::correlation::CorrelationId(String::new()))
+        .0
+        .clone();
+    Json(errors::ErrorBody {
+        code: "UNPROCESSABLE_ENTITY",
+        message: "The request body could not be parsed or contains invalid values.".to_string(),
+        correlation_id: if cid.is_empty() { None } else { Some(cid) },
+    })
+}
+
 // ── Health check ──────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -254,7 +272,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/", routes![run_scan, list_scans, get_scan])
         .mount("/", routes![list_audit_logs, get_audit_log])
         .mount("/", routes![list_backups, trigger_backup, restore_backup])
-        .register("/", catchers![catch_unauthorized, catch_forbidden])
+        .register("/", catchers![catch_unauthorized, catch_forbidden, catch_unprocessable])
         .launch()
         .await?;
 
