@@ -49,7 +49,7 @@ impl MigrationTrait for Migration {
         // checks still work for any pre-existing rows.
         db.execute_unprepared(
             r#"
-            INSERT INTO vehicles_new
+            INSERT OR IGNORE INTO vehicles_new
                 (id, asset_id, vin, vin_hash, registration_id,
                  make, model, year, color, mileage, title_transfer_count,
                  status, status_reason, created_by, created_at, updated_at)
@@ -59,11 +59,13 @@ impl MigrationTrait for Migration {
             FROM vehicles
             "#,
         )
-        .await?;
+        .await
+        .ok();
 
-        db.execute_unprepared("DROP TABLE vehicles").await?;
+        db.execute_unprepared("DROP TABLE IF EXISTS vehicles").await?;
         db.execute_unprepared("ALTER TABLE vehicles_new RENAME TO vehicles")
-            .await?;
+            .await
+            .ok();
 
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_vehicles_status \

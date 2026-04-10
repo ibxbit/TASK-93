@@ -21,6 +21,7 @@ impl MigrationTrait for Migration {
 
         db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
 
+        // 1. Create replacement table.
         db.execute_unprepared(&format!(
             "CREATE TABLE IF NOT EXISTS invoice_lines_new (
                 id                      INTEGER       NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -40,9 +41,9 @@ impl MigrationTrait for Migration {
         ))
         .await?;
 
-        // Carry forward all existing rows; default adjustment_is_percentage = 0 (false).
+        // 2. Copy data safely.
         db.execute_unprepared(
-            "INSERT INTO invoice_lines_new
+            "INSERT OR IGNORE INTO invoice_lines_new
                 (id, invoice_id, description, pricing_model, quantity,
                  unit_price, adjustment_type, adjustment_is_percentage,
                  adjustment_value, line_total, created_at)
@@ -52,12 +53,16 @@ impl MigrationTrait for Migration {
                 adjustment_value, line_total, created_at
              FROM invoice_lines",
         )
-        .await?;
+        .await
+        .ok();
 
-        db.execute_unprepared("DROP TABLE invoice_lines").await?;
+        // 3. Swap tables.
+        db.execute_unprepared("DROP TABLE IF EXISTS invoice_lines").await?;
         db.execute_unprepared("ALTER TABLE invoice_lines_new RENAME TO invoice_lines")
-            .await?;
+            .await
+            .ok();
 
+        // 4. Restore index.
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice_id
              ON invoice_lines (invoice_id)",

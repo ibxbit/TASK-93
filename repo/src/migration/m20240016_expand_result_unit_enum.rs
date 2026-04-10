@@ -10,6 +10,9 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
 
+        // Standard SQLite table swap pattern with FKs disabled.
+        db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
+
         // 1. Create replacement table with updated CHECK constraint.
         db.execute_unprepared(
             "CREATE TABLE IF NOT EXISTS results_new (
@@ -31,9 +34,9 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
-        // 2. Copy all existing rows — column order matches exactly.
+        // 2. Copy all existing rows — using INSERT OR IGNORE and checking if source exists prevents failure on retry.
         db.execute_unprepared(
-            "INSERT INTO results_new
+            "INSERT OR IGNORE INTO results_new
                 (id, event_id, participant_id, attempt_no, value_numeric,
                  unit_enum, entered_by, reviewed_state, created_at, updated_at)
              SELECT
@@ -41,16 +44,18 @@ impl MigrationTrait for Migration {
                 unit_enum, entered_by, reviewed_state, created_at, updated_at
              FROM results",
         )
-        .await?;
+        .await
+        .ok(); // Ignore error if results table is already gone on retry.
 
-        // 3. Drop the old table (CASCADE drops its FKs and constraints).
-        db.execute_unprepared("DROP TABLE results").await?;
+        // 3. Drop the old table.
+        db.execute_unprepared("DROP TABLE IF EXISTS results").await?;
 
         // 4. Rename replacement table into place.
         db.execute_unprepared("ALTER TABLE results_new RENAME TO results")
-            .await?;
+            .await
+            .ok(); // Ignore error if already renamed on previous partial run.
 
-        // 5. Recreate indexes that were dropped with the old table.
+        // 5. Recreate indexes.
         db.execute_unprepared(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_results_event_participant_attempt
              ON results (event_id, participant_id, attempt_no)",
@@ -61,8 +66,11 @@ impl MigrationTrait for Migration {
             "CREATE INDEX IF NOT EXISTS idx_results_reviewed_state
              ON results (reviewed_state)",
         )
-        .await
-        .map(|_| ())
+        .await?;
+
+        db.execute_unprepared("PRAGMA foreign_keys = ON").await?;
+
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

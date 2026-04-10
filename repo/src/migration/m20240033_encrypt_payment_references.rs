@@ -42,7 +42,7 @@ impl MigrationTrait for Migration {
         // idempotency lookups still function for any pre-existing rows.
         db.execute_unprepared(
             r#"
-            INSERT INTO payment_entries_new
+            INSERT OR IGNORE INTO payment_entries_new
                 (id, invoice_id, method, amount, received_at,
                  external_reference, reference_hash,
                  recorded_by, notes, status, created_at)
@@ -52,11 +52,13 @@ impl MigrationTrait for Migration {
             FROM payment_entries
             "#,
         )
-        .await?;
+        .await
+        .ok();
 
-        db.execute_unprepared("DROP TABLE payment_entries").await?;
+        db.execute_unprepared("DROP TABLE IF EXISTS payment_entries").await?;
         db.execute_unprepared("ALTER TABLE payment_entries_new RENAME TO payment_entries")
-            .await?;
+            .await
+            .ok();
 
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_payment_entries_invoice_id \

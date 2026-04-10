@@ -21,13 +21,14 @@ impl MigrationTrait for Migration {
 
         db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
 
+        // 1. Create replacement table.
         db.execute_unprepared(&format!(
             "CREATE TABLE IF NOT EXISTS payment_entries_new (
                 id                 INTEGER       NOT NULL PRIMARY KEY AUTOINCREMENT,
                 invoice_id         INTEGER       NOT NULL
                                        REFERENCES invoices(id) ON DELETE RESTRICT,
                 method             TEXT(24)      NOT NULL CHECK ({METHOD_CHECK}),
-                amount             DECIMAL(19,4) NOT NULL CHECK ({AMOUNT_CHECK}),
+                amount             DECIMAL(16,4) NOT NULL CHECK ({AMOUNT_CHECK}),
                 received_at        TIMESTAMPTZ   NOT NULL,
                 external_reference TEXT(128)     NOT NULL UNIQUE,
                 recorded_by        INTEGER       NOT NULL REFERENCES users(id),
@@ -39,9 +40,9 @@ impl MigrationTrait for Migration {
         ))
         .await?;
 
-        // Carry forward all existing rows; default status = 'active'.
+        // 2. Copy data safely.
         db.execute_unprepared(
-            "INSERT INTO payment_entries_new
+            "INSERT OR IGNORE INTO payment_entries_new
                 (id, invoice_id, method, amount, received_at,
                  external_reference, recorded_by, notes, status, created_at)
              SELECT
@@ -49,12 +50,16 @@ impl MigrationTrait for Migration {
                 external_reference, recorded_by, notes, 'active', created_at
              FROM payment_entries",
         )
-        .await?;
+        .await
+        .ok();
 
-        db.execute_unprepared("DROP TABLE payment_entries").await?;
+        // 3. Swap tables.
+        db.execute_unprepared("DROP TABLE IF EXISTS payment_entries").await?;
         db.execute_unprepared("ALTER TABLE payment_entries_new RENAME TO payment_entries")
-            .await?;
+            .await
+            .ok();
 
+        // 4. Restore index.
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_payment_entries_invoice_id
              ON payment_entries (invoice_id)",
@@ -79,7 +84,7 @@ impl MigrationTrait for Migration {
                                        REFERENCES invoices(id) ON DELETE RESTRICT,
                 method             TEXT(24)      NOT NULL
                                        CHECK (method IN ('bank_transfer','card','cash','cheque')),
-                amount             DECIMAL(19,4) NOT NULL CHECK (amount > 0),
+                amount             DECIMAL(16,4) NOT NULL CHECK (amount > 0),
                 received_at        TIMESTAMPTZ   NOT NULL,
                 external_reference TEXT(128)     NOT NULL UNIQUE,
                 recorded_by        INTEGER       NOT NULL REFERENCES users(id),

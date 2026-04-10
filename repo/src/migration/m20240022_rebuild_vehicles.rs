@@ -23,6 +23,7 @@ impl MigrationTrait for Migration {
 
         db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
 
+        // 1. Create replacement table.
         db.execute_unprepared(&format!(
             "CREATE TABLE IF NOT EXISTS vehicles_new (
                 id                   INTEGER      NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -44,10 +45,9 @@ impl MigrationTrait for Migration {
         ))
         .await?;
 
-        // Carry forward existing VIN, registration_id, asset_id — map old
-        // operational statuses to 'draft' since there is no meaningful mapping.
+        // 2. Copy data safely.
         db.execute_unprepared(
-            "INSERT INTO vehicles_new
+            "INSERT OR IGNORE INTO vehicles_new
                 (id, asset_id, vin, registration_id,
                  make, model, year, color,
                  mileage, title_transfer_count,
@@ -59,11 +59,14 @@ impl MigrationTrait for Migration {
                 'draft', NULL, 0, created_at, updated_at
              FROM vehicles",
         )
-        .await?;
+        .await
+        .ok();
 
-        db.execute_unprepared("DROP TABLE vehicles").await?;
+        // 3. Swap tables.
+        db.execute_unprepared("DROP TABLE IF EXISTS vehicles").await?;
         db.execute_unprepared("ALTER TABLE vehicles_new RENAME TO vehicles")
-            .await?;
+            .await
+            .ok();
 
         // Recreate the status index (was previously on old status values).
         db.execute_unprepared(

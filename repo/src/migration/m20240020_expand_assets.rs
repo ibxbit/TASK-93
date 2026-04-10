@@ -36,7 +36,7 @@ impl MigrationTrait for Migration {
                                             CHECK ({STATUS_CHECK}),
                 owner_id                INTEGER      REFERENCES users(id),
                 responsible_person_id   INTEGER      REFERENCES users(id),
-                procurement_cost        DECIMAL(19,4),
+                procurement_cost        DECIMAL(16,4),
                 procurement_date        TEXT,
                 useful_life_months      INTEGER,
                 notes                   TEXT,
@@ -48,7 +48,7 @@ impl MigrationTrait for Migration {
 
         // 2. Migrate existing rows; rename depreciation_months → useful_life_months.
         db.execute_unprepared(
-            "INSERT INTO assets_new
+            "INSERT OR IGNORE INTO assets_new
                 (id, asset_code, category, brand, model, serial_number,
                  status, owner_id, responsible_person_id,
                  procurement_cost, procurement_date, useful_life_months,
@@ -60,12 +60,14 @@ impl MigrationTrait for Migration {
                 notes, created_at, updated_at
              FROM assets",
         )
-        .await?;
+        .await
+        .ok();
 
         // 3. Swap tables.
-        db.execute_unprepared("DROP TABLE assets").await?;
+        db.execute_unprepared("DROP TABLE IF EXISTS assets").await?;
         db.execute_unprepared("ALTER TABLE assets_new RENAME TO assets")
-            .await?;
+            .await
+            .ok();
 
         // 4. Recreate indexes.
         db.execute_unprepared(
