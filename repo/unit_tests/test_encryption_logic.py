@@ -58,14 +58,15 @@ def _validate_key(b64_key: str) -> bytes:
 def _encrypt(key: bytes, plaintext: str) -> str:
     """Encrypt plaintext → base64(nonce || ciphertext_with_tag)."""
     nonce = os.urandom(NONCE_LEN)
+    pt_bytes = plaintext.encode()          # UTF-8 bytes — may be longer than len(plaintext)
     if _HAS_CRYPTO:
-        ct_and_tag = AESGCM(key).encrypt(nonce, plaintext.encode(), None)
+        ct_and_tag = AESGCM(key).encrypt(nonce, pt_bytes, None)
     else:
         # Deterministic XOR-based stub so tests can run without cryptography pkg.
         # Does NOT provide real security; validates structure only.
         ct_and_tag = bytes(b ^ k for b, k in zip(
-            plaintext.encode(),
-            (key * (len(plaintext) // KEY_LEN + 1))[:len(plaintext)]
+            pt_bytes,
+            (key * (len(pt_bytes) // KEY_LEN + 1))[:len(pt_bytes)]
         )) + b"\x00" * TAG_LEN
     blob = nonce + ct_and_tag
     return base64.b64encode(blob).decode()

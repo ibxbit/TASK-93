@@ -33,13 +33,19 @@ def population_stdev(values: list) -> float:
 
 
 def zscore(values: list, x: float) -> float:
-    """Absolute z-score of x against the population."""
-    if len(values) < 2:
+    """Absolute z-score of x against the rest of the population (leave-one-out).
+
+    Excluding x from the reference distribution prevents the outlier from
+    inflating the standard deviation and masking itself — the standard
+    approach used in the Rust service.
+    """
+    others = [v for v in values if v != x]
+    if len(others) < 2:
         return 0.0
-    stdev = population_stdev(values)
+    stdev = population_stdev(others)
     if stdev == 0.0:
         return 0.0
-    mean = population_mean(values)
+    mean = population_mean(others)
     return abs(x - mean) / stdev
 
 

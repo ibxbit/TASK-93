@@ -23,6 +23,22 @@ use crate::migration::Migrator;
 /// - Connection pool is sized conservatively (1–5) since SQLite serialises writes.
 /// - Performance PRAGMAs are applied immediately after the pool opens.
 pub async fn connect(config: &AppConfig) -> Result<DatabaseConnection, sea_orm::DbErr> {
+    // ── Ensure database directory and file exist ───────────────────────────────
+    // sqlx/SQLite does not create the database file automatically; the
+    // directory must also exist when running on a fresh volume mount.
+    if let Some(db_file) = backup_service::db_path_from_url(&config.database_url) {
+        if let Some(parent) = db_file.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                sea_orm::DbErr::Custom(format!("Cannot create database directory: {e}"))
+            })?;
+        }
+        if !db_file.exists() {
+            std::fs::File::create(&db_file).map_err(|e| {
+                sea_orm::DbErr::Custom(format!("Cannot initialise database file: {e}"))
+            })?;
+        }
+    }
+
     // ── Pending restore check ─────────────────────────────────────────────────
     let backup_dir = PathBuf::from(&config.backup_dir);
     if let Some(db_file) = backup_service::db_path_from_url(&config.database_url) {

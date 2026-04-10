@@ -15,7 +15,7 @@ echo "========================================="
 docker run --rm \
   -v "$(pwd)/unit_tests:/tests/unit_tests:ro" \
   "$PYTHON_IMAGE" \
-  sh -c "$INSTALL && pytest /tests/unit_tests/ -v"
+  sh -c "$INSTALL && pytest /tests/unit_tests/ -v -p no:cacheprovider"
 
 echo ""
 echo "========================================="
