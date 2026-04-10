@@ -1,0 +1,35 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Rust build artefacts — these are rebuilt inside the container
+target/
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+!.env.example
+
+# Editor / IDE artefacts
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed at runtime)
+*.md
+docs/
+
+# Docker files themselves (avoid recursive context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Test fixtures and local backups
+tests/
+backups/

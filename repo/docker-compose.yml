@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: motorsport-backend:latest
+    container_name: motorsport-backend
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    # Runtime secrets & config — never baked into the image.
+    env_file:
+      - .env
+
+    volumes:
+      # SQLite database file — survives container restarts.
+      - motorsport_data:/app/data
+      # Structured JSON logs — consumed externally or rotated by log driver.
+      - motorsport_logs:/app/logs
+      # Nightly SQLite backup files — retained for BACKUP_RETAIN_DAYS days.
+      - motorsport_backups:/app/backups
+
+    # Hard limits prevent runaway resource usage on a shared host.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "7"    # aligns with BACKUP_RETAIN_DAYS default
+
+volumes:
+  motorsport_data:
+    driver: local
+  motorsport_logs:
+    driver: local
+  motorsport_backups:
+    driver: local

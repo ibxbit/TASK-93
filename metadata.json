@@ -1,0 +1,9 @@
+{
+    "prompt": "Rust-based analytics and asset management server with SQLite storage.",
+    "project_type": "server",
+    "frontend_language": "none",
+    "backend_language": "rust",
+    "frontend_framework": "none",
+    "backend_framework": "rocket",
+    "database": "sqlite"
+}
