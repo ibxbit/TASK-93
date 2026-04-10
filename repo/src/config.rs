@@ -37,8 +37,12 @@ impl AppConfig {
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "sqlite:///app/data/motorsport.db".to_string()),
 
-            encryption_key: env::var("ENCRYPTION_KEY")
-                .map_err(|_| "ENCRYPTION_KEY is required but not set".to_string())?,
+            encryption_key: env::var("ENCRYPTION_KEY").map_err(|_| {
+                "ENCRYPTION_KEY is required but not set. \
+                 Generate a value with: openssl rand -base64 32 \
+                 and set it as an environment variable or in your .env file."
+                    .to_string()
+            })?,
 
             host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
 

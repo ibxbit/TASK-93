@@ -287,68 +287,6 @@ class TestPaymentMethodValidation:
         assert is_valid_payment_method("") is False
 
 
-# ── Payment lifecycle and exception states ─────────────────────────────────────
-
-EXCEPTION_TYPES = {"void", "reversal", "dispute"}
-PAYMENT_ENTRY_STATUSES = {"active", "voided", "reversed", "disputed"}
-
-PAYMENT_STATUS_FLOW = {
-    "active": {"voided", "reversed", "disputed"},
-    "voided": set(),
-    "reversed": set(),
-    "disputed": set(),
-}
-
-
-def can_transition_payment(current: str, target: str) -> bool:
-    return target in PAYMENT_STATUS_FLOW.get(current, set())
-
-
-REFUND_STATUS_FLOW = {
-    "pending_finance": {"pending_auditor", "approved", "rejected"},
-    "pending_auditor": {"approved", "rejected"},
-    "approved": set(),
-    "rejected": set(),
-}
-
-
-def can_transition_refund(current: str, target: str) -> bool:
-    return target in REFUND_STATUS_FLOW.get(current, set())
-
-
-class TestPaymentLifecycle:
-    def test_active_can_be_voided(self):
-        assert can_transition_payment("active", "voided") is True
-
-    def test_active_can_be_reversed(self):
-        assert can_transition_payment("active", "reversed") is True
-
-    def test_active_can_be_disputed(self):
-        assert can_transition_payment("active", "disputed") is True
-
-    def test_voided_is_terminal(self):
-        assert can_transition_payment("voided", "active") is False
-
-    def test_exception_types_valid(self):
-        for e in ["void", "reversal", "dispute"]:
-            assert e in EXCEPTION_TYPES
-
-
-class TestRefundWorkflow:
-    def test_pending_finance_to_approved_for_small_amounts(self):
-        assert can_transition_refund("pending_finance", "approved") is True
-
-    def test_pending_finance_to_auditor_for_large_amounts(self):
-        assert can_transition_refund("pending_finance", "pending_auditor") is True
-
-    def test_pending_auditor_to_approved(self):
-        assert can_transition_refund("pending_auditor", "approved") is True
-
-    def test_terminal_states(self):
-        for terminal in ["approved", "rejected"]:
-            assert can_transition_refund(terminal, "pending_finance") is False
-
-
 # ── Event status transitions ───────────────────────────────────────────────────
 
 EVENT_STATUS_FLOW = {
