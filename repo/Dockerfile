@@ -65,7 +65,7 @@ EXPOSE 8000
 
 # wget ships with debian:bookworm-slim; uses $PORT so the check honours
 # any port override without rebuilding the image.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD wget -qO- "http://localhost:${PORT}/health" > /dev/null || exit 1
 
 CMD ["/app/motorsport-backend"]
