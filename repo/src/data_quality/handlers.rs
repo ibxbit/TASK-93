@@ -1,3 +1,4 @@
+use crate::middleware::rate_limit::RateLimitedToken;
 use rocket::{serde::json::Json, State};
 use sea_orm::DatabaseConnection;
 
@@ -29,6 +30,7 @@ use super::{service, ScanListQuery, ScanReport, ScanRequest, ScanSummary};
 #[post("/data-quality/scans", data = "<body>")]
 pub async fn run_scan(
     guard: RequireAuditRead,
+    _rate_limit: RateLimitedToken,
     body: Json<ScanRequest>,
     conn: &State<DatabaseConnection>,
 ) -> AppResult<Json<ScanReport>> {

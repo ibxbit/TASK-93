@@ -74,7 +74,7 @@ impl MigrationTrait for Migration {
         .await?;
 
         db.execute_unprepared(
-            "INSERT OR IGNORE INTO assets_new
+            "INSERT INTO assets_new
                 (id, asset_code, category, brand, model, serial_number,
                  status, owner_id, responsible_person_id,
                  procurement_cost, procurement_date, useful_life_months,
@@ -86,13 +86,10 @@ impl MigrationTrait for Migration {
                 notes, created_at, updated_at
              FROM assets",
         )
-        .await
-        .ok();
+        .await?;
 
         db.execute_unprepared("DROP TABLE IF EXISTS assets").await?;
-        db.execute_unprepared("ALTER TABLE assets_new RENAME TO assets")
-            .await
-            .ok();
+        db.execute_unprepared("ALTER TABLE assets_new RENAME TO assets").await?;
 
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_assets_category ON assets (category)",
@@ -128,7 +125,7 @@ impl MigrationTrait for Migration {
         .await?;
 
         db.execute_unprepared(
-            "INSERT OR IGNORE INTO invoices_new
+            "INSERT INTO invoices_new
                 (id, invoice_no, counterparty, issue_date,
                  subtotal, tax, total, status, created_by, created_at, updated_at,
                  tax_rate, discount_type, discount_value, discount_amount)
@@ -140,13 +137,10 @@ impl MigrationTrait for Migration {
                 CAST(discount_value AS REAL), CAST(discount_amount AS REAL)
              FROM invoices",
         )
-        .await
-        .ok();
+        .await?;
 
         db.execute_unprepared("DROP TABLE IF EXISTS invoices").await?;
-        db.execute_unprepared("ALTER TABLE invoices_new RENAME TO invoices")
-            .await
-            .ok();
+        db.execute_unprepared("ALTER TABLE invoices_new RENAME TO invoices").await?;
 
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices (status)",
@@ -179,7 +173,7 @@ impl MigrationTrait for Migration {
         .await?;
 
         db.execute_unprepared(
-            "INSERT OR IGNORE INTO invoice_lines_new
+            "INSERT INTO invoice_lines_new
                 (id, invoice_id, description, pricing_model, quantity,
                  unit_price, adjustment_type, adjustment_is_percentage,
                  adjustment_value, line_total, is_refund, created_at)
@@ -190,13 +184,10 @@ impl MigrationTrait for Migration {
                 is_refund, created_at
              FROM invoice_lines",
         )
-        .await
-        .ok();
+        .await?;
 
         db.execute_unprepared("DROP TABLE IF EXISTS invoice_lines").await?;
-        db.execute_unprepared("ALTER TABLE invoice_lines_new RENAME TO invoice_lines")
-            .await
-            .ok();
+        db.execute_unprepared("ALTER TABLE invoice_lines_new RENAME TO invoice_lines").await?;
 
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice_id
@@ -223,7 +214,7 @@ impl MigrationTrait for Migration {
         .await?;
 
         db.execute_unprepared(
-            "INSERT OR IGNORE INTO results_new
+            "INSERT INTO results_new
                 (id, event_id, participant_id, attempt_no, value_numeric,
                  unit_enum, entered_by, reviewed_state, created_at, updated_at)
              SELECT
@@ -231,13 +222,10 @@ impl MigrationTrait for Migration {
                 unit_enum, entered_by, reviewed_state, created_at, updated_at
              FROM results",
         )
-        .await
-        .ok();
+        .await?;
 
         db.execute_unprepared("DROP TABLE IF EXISTS results").await?;
-        db.execute_unprepared("ALTER TABLE results_new RENAME TO results")
-            .await
-            .ok();
+        db.execute_unprepared("ALTER TABLE results_new RENAME TO results").await?;
 
         db.execute_unprepared(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_results_event_participant_attempt
@@ -247,6 +235,92 @@ impl MigrationTrait for Migration {
         db.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_results_reviewed_state
              ON results (reviewed_state)",
+        )
+        .await?;
+
+        // ── 5. Fix payment_entries.amount DECIMAL → REAL ──────────────────────
+        db.execute_unprepared(
+            "CREATE TABLE IF NOT EXISTS payment_entries_new (
+                id                 INTEGER     NOT NULL PRIMARY KEY AUTOINCREMENT,
+                invoice_id         INTEGER     NOT NULL
+                                       REFERENCES invoices(id) ON DELETE RESTRICT,
+                method             TEXT(24)    NOT NULL
+                                       CHECK (method IN ('bank_transfer','card','cash','cheque','ach')),
+                amount             REAL        NOT NULL CHECK (amount > 0),
+                received_at        TIMESTAMPTZ NOT NULL,
+                external_reference TEXT(128)   NOT NULL,
+                reference_hash     TEXT(128)   NOT NULL DEFAULT '' UNIQUE,
+                recorded_by        INTEGER     NOT NULL REFERENCES users(id),
+                notes              TEXT,
+                status             TEXT(16)    NOT NULL DEFAULT 'active'
+                                       CHECK (status IN ('active','voided','reversed','disputed')),
+                created_at         TIMESTAMPTZ NOT NULL
+            )"
+        )
+        .await?;
+
+        db.execute_unprepared(
+            "INSERT INTO payment_entries_new
+                (id, invoice_id, method, amount, received_at,
+                 external_reference, reference_hash, recorded_by, notes, status, created_at)
+             SELECT
+                id, invoice_id, method, CAST(amount AS REAL), received_at,
+                external_reference, reference_hash, recorded_by, notes, status, created_at
+             FROM payment_entries",
+        )
+        .await?;
+
+        db.execute_unprepared("DROP TABLE IF EXISTS payment_entries").await?;
+        db.execute_unprepared("ALTER TABLE payment_entries_new RENAME TO payment_entries").await?;
+
+        db.execute_unprepared(
+            "CREATE INDEX IF NOT EXISTS idx_payment_entries_invoice_id
+             ON payment_entries (invoice_id)",
+        )
+        .await?;
+
+        // ── 6. Fix payment_refunds.amount DECIMAL → REAL ──────────────────────
+        db.execute_unprepared(
+            "CREATE TABLE IF NOT EXISTS payment_refunds_new (
+                id                   INTEGER     NOT NULL PRIMARY KEY AUTOINCREMENT,
+                payment_id           INTEGER     NOT NULL
+                                         REFERENCES payment_entries(id) ON DELETE RESTRICT,
+                invoice_line_id      INTEGER
+                                         REFERENCES invoice_lines(id),
+                amount               REAL        NOT NULL CHECK (amount > 0),
+                reason               TEXT        NOT NULL,
+                status               TEXT(24)    NOT NULL DEFAULT 'pending_finance'
+                                         CHECK (status IN ('pending_finance','pending_auditor','approved','rejected')),
+                requested_by         INTEGER     NOT NULL REFERENCES users(id),
+                finance_approved_by  INTEGER     REFERENCES users(id),
+                auditor_approved_by  INTEGER     REFERENCES users(id),
+                rejected_by          INTEGER     REFERENCES users(id),
+                rejection_reason     TEXT,
+                created_at           TIMESTAMPTZ NOT NULL,
+                updated_at           TIMESTAMPTZ NOT NULL
+            )",
+        )
+        .await?;
+
+        db.execute_unprepared(
+            "INSERT INTO payment_refunds_new
+                (id, payment_id, invoice_line_id, amount, reason, status,
+                 requested_by, finance_approved_by, auditor_approved_by,
+                 rejected_by, rejection_reason, created_at, updated_at)
+             SELECT
+                id, payment_id, invoice_line_id, CAST(amount AS REAL), reason, status,
+                requested_by, finance_approved_by, auditor_approved_by,
+                rejected_by, rejection_reason, created_at, updated_at
+             FROM payment_refunds",
+        )
+        .await?;
+
+        db.execute_unprepared("DROP TABLE IF EXISTS payment_refunds").await?;
+        db.execute_unprepared("ALTER TABLE payment_refunds_new RENAME TO payment_refunds").await?;
+
+        db.execute_unprepared(
+            "CREATE INDEX IF NOT EXISTS idx_payment_refunds_payment_id
+             ON payment_refunds (payment_id)",
         )
         .await?;
 
@@ -260,192 +334,49 @@ impl MigrationTrait for Migration {
 
         db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
 
-        // ── Restore results with FK on participant_id ─────────────────────────
-        db.execute_unprepared(&format!(
-            "CREATE TABLE IF NOT EXISTS results_old (
-                id              INTEGER     NOT NULL PRIMARY KEY AUTOINCREMENT,
-                event_id        INTEGER     NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-                participant_id  INTEGER     NOT NULL REFERENCES users(id),
-                attempt_no      INTEGER     NOT NULL,
-                value_numeric   REAL        NOT NULL,
-                unit_enum       TEXT(32)    NOT NULL CHECK ({RESULTS_UNIT_CHECK}),
-                entered_by      INTEGER     NOT NULL REFERENCES users(id),
-                reviewed_state  TEXT(16)    NOT NULL DEFAULT 'pending'
-                                    CHECK ({RESULTS_STATE_CHECK}),
-                created_at      TIMESTAMPTZ NOT NULL,
-                updated_at      TIMESTAMPTZ NOT NULL
-            )"
-        ))
-        .await?;
-
+        // ── Restore payment_refunds with DECIMAL amount ───────────────────────
         db.execute_unprepared(
-            "INSERT INTO results_old
-                (id, event_id, participant_id, attempt_no, value_numeric,
-                 unit_enum, entered_by, reviewed_state, created_at, updated_at)
-             SELECT
-                id, event_id, participant_id, attempt_no, value_numeric,
-                unit_enum, entered_by, reviewed_state, created_at, updated_at
-             FROM results",
+            "CREATE TABLE IF NOT EXISTS payment_refunds_old (
+                id                   INTEGER       NOT NULL PRIMARY KEY AUTOINCREMENT,
+                payment_id           INTEGER       NOT NULL
+                                         REFERENCES payment_entries(id) ON DELETE RESTRICT,
+                invoice_line_id      INTEGER
+                                         REFERENCES invoice_lines(id),
+                amount               DECIMAL(16,4) NOT NULL CHECK (amount > 0),
+                reason               TEXT          NOT NULL,
+                status               TEXT(24)      NOT NULL DEFAULT 'pending_finance'
+                                         CHECK (status IN ('pending_finance','pending_auditor','approved','rejected')),
+                requested_by         INTEGER       NOT NULL REFERENCES users(id),
+                finance_approved_by  INTEGER       REFERENCES users(id),
+                auditor_approved_by  INTEGER       REFERENCES users(id),
+                rejected_by          INTEGER       REFERENCES users(id),
+                rejection_reason     TEXT,
+                created_at           TIMESTAMPTZ   NOT NULL,
+                updated_at           TIMESTAMPTZ   NOT NULL
+            )",
         )
         .await?;
 
-        db.execute_unprepared("DROP TABLE results").await?;
-        db.execute_unprepared("ALTER TABLE results_old RENAME TO results")
+        db.execute_unprepared(
+            "INSERT INTO payment_refunds_old
+                (id, payment_id, invoice_line_id, amount, reason, status,
+                 requested_by, finance_approved_by, auditor_approved_by,
+                 rejected_by, rejection_reason, created_at, updated_at)
+             SELECT
+                id, payment_id, invoice_line_id, amount, reason, status,
+                requested_by, finance_approved_by, auditor_approved_by,
+                rejected_by, rejection_reason, created_at, updated_at
+             FROM payment_refunds",
+        )
+        .await?;
+
+        db.execute_unprepared("DROP TABLE payment_refunds").await?;
+        db.execute_unprepared("ALTER TABLE payment_refunds_old RENAME TO payment_refunds")
             .await?;
 
         db.execute_unprepared(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_results_event_participant_attempt
-             ON results (event_id, participant_id, attempt_no)",
-        )
-        .await?;
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_results_reviewed_state
-             ON results (reviewed_state)",
-        )
-        .await?;
-
-        // ── Restore invoice_lines with DECIMAL columns ────────────────────────
-        db.execute_unprepared(&format!(
-            "CREATE TABLE IF NOT EXISTS invoice_lines_old (
-                id                       INTEGER       NOT NULL PRIMARY KEY AUTOINCREMENT,
-                invoice_id               INTEGER       NOT NULL
-                                             REFERENCES invoices(id) ON DELETE CASCADE,
-                description              TEXT          NOT NULL,
-                pricing_model            TEXT(16)      NOT NULL CHECK ({INV_LINES_PRICING_CHECK}),
-                quantity                 REAL          NOT NULL,
-                unit_price               DECIMAL(16,4) NOT NULL,
-                adjustment_type          TEXT(16)      CHECK ({INV_LINES_ADJ_CHECK}),
-                adjustment_is_percentage INTEGER       NOT NULL DEFAULT 0,
-                adjustment_value         DECIMAL(16,4),
-                line_total               DECIMAL(16,4) NOT NULL,
-                is_refund                INTEGER       NOT NULL DEFAULT 0,
-                created_at               TIMESTAMPTZ   NOT NULL,
-                CHECK ({INV_LINES_AMOUNTS_CHECK})
-            )"
-        ))
-        .await?;
-
-        db.execute_unprepared(
-            "INSERT INTO invoice_lines_old
-                (id, invoice_id, description, pricing_model, quantity,
-                 unit_price, adjustment_type, adjustment_is_percentage,
-                 adjustment_value, line_total, is_refund, created_at)
-             SELECT
-                id, invoice_id, description, pricing_model, quantity,
-                unit_price, adjustment_type, adjustment_is_percentage,
-                adjustment_value, line_total, is_refund, created_at
-             FROM invoice_lines",
-        )
-        .await?;
-
-        db.execute_unprepared("DROP TABLE invoice_lines").await?;
-        db.execute_unprepared("ALTER TABLE invoice_lines_old RENAME TO invoice_lines")
-            .await?;
-
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice_id
-             ON invoice_lines (invoice_id)",
-        )
-        .await?;
-
-        // ── Restore invoices with DECIMAL columns ─────────────────────────────
-        db.execute_unprepared(&format!(
-            "CREATE TABLE IF NOT EXISTS invoices_old (
-                id              INTEGER       NOT NULL PRIMARY KEY AUTOINCREMENT,
-                invoice_no      TEXT(64)      NOT NULL UNIQUE,
-                counterparty    TEXT          NOT NULL,
-                issue_date      DATE          NOT NULL,
-                subtotal        DECIMAL(16,4) NOT NULL,
-                tax             DECIMAL(16,4) NOT NULL,
-                total           DECIMAL(16,4) NOT NULL,
-                status          TEXT(16)      NOT NULL DEFAULT 'draft'
-                                    CHECK ({INVOICES_STATUS_CHECK}),
-                created_by      INTEGER       NOT NULL REFERENCES users(id),
-                created_at      TIMESTAMPTZ   NOT NULL,
-                updated_at      TIMESTAMPTZ   NOT NULL,
-                tax_rate        DECIMAL(5,4)  NOT NULL DEFAULT 0,
-                discount_type   TEXT,
-                discount_value  DECIMAL(16,4),
-                discount_amount DECIMAL(16,4) NOT NULL DEFAULT 0,
-                CHECK ({INVOICES_TOTALS_CHECK})
-            )"
-        ))
-        .await?;
-
-        db.execute_unprepared(
-            "INSERT INTO invoices_old
-                (id, invoice_no, counterparty, issue_date,
-                 subtotal, tax, total, status, created_by, created_at, updated_at,
-                 tax_rate, discount_type, discount_value, discount_amount)
-             SELECT
-                id, invoice_no, counterparty, issue_date,
-                subtotal, tax, total, status, created_by, created_at, updated_at,
-                tax_rate, discount_type, discount_value, discount_amount
-             FROM invoices",
-        )
-        .await?;
-
-        db.execute_unprepared("DROP TABLE invoices").await?;
-        db.execute_unprepared("ALTER TABLE invoices_old RENAME TO invoices")
-            .await?;
-
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices (status)",
-        )
-        .await?;
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_invoices_counterparty ON invoices (counterparty)",
-        )
-        .await?;
-
-        // ── Restore assets with DECIMAL procurement_cost ──────────────────────
-        db.execute_unprepared(&format!(
-            "CREATE TABLE IF NOT EXISTS assets_old (
-                id                      INTEGER      NOT NULL PRIMARY KEY AUTOINCREMENT,
-                asset_code              TEXT(64)     NOT NULL UNIQUE,
-                category                TEXT(32)     NOT NULL CHECK ({ASSETS_CATEGORY_CHECK}),
-                brand                   TEXT         NOT NULL,
-                model                   TEXT         NOT NULL,
-                serial_number           TEXT,
-                status                  TEXT(24)     NOT NULL DEFAULT 'in_service'
-                                            CHECK ({ASSETS_STATUS_CHECK}),
-                owner_id                INTEGER      REFERENCES users(id),
-                responsible_person_id   INTEGER      REFERENCES users(id),
-                procurement_cost        DECIMAL(16,4),
-                procurement_date        TEXT,
-                useful_life_months      INTEGER,
-                notes                   TEXT,
-                created_at              TIMESTAMPTZ  NOT NULL,
-                updated_at              TIMESTAMPTZ  NOT NULL
-            )"
-        ))
-        .await?;
-
-        db.execute_unprepared(
-            "INSERT INTO assets_old
-                (id, asset_code, category, brand, model, serial_number,
-                 status, owner_id, responsible_person_id,
-                 procurement_cost, procurement_date, useful_life_months,
-                 notes, created_at, updated_at)
-             SELECT
-                id, asset_code, category, brand, model, serial_number,
-                status, owner_id, responsible_person_id,
-                procurement_cost, procurement_date, useful_life_months,
-                notes, created_at, updated_at
-             FROM assets",
-        )
-        .await?;
-
-        db.execute_unprepared("DROP TABLE assets").await?;
-        db.execute_unprepared("ALTER TABLE assets_old RENAME TO assets")
-            .await?;
-
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_assets_category ON assets (category)",
-        )
-        .await?;
-        db.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status)",
+            "CREATE INDEX IF NOT EXISTS idx_payment_refunds_payment_id
+             ON payment_refunds (payment_id)",
         )
         .await?;
 

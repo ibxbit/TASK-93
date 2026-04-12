@@ -1,0 +1,8 @@
+[cli]
+migration_dir = "src/migration"
+
+[database]
+url = "sqlite:///app/data/motorsport.db"
+
+[migration]
+lib = false

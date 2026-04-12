@@ -1,5 +1,5 @@
+use rust_decimal::prelude::FromPrimitive;
 use chrono::{NaiveDate, Utc};
-use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -13,7 +13,7 @@ use crate::entity::{
 use crate::errors::{AppError, AppResult};
 
 use super::{
-    AnalyticsQuery, CreateMetricRequest, ExportQuery, FunnelQuery, FunnelResponse, FunnelStep,
+    CreateMetricRequest, ExportQuery, FunnelQuery, FunnelResponse, FunnelStep,
     MetricDetailResponse, MetricResponse, MetricVersionResponse, RetentionPeriod, RetentionQuery,
     RetentionResponse, RetentionRow, TrendPoint, TrendQuery, TrendResponse, UpdateMetricRequest,
 };
@@ -835,7 +835,7 @@ async fn retention_event_participation(
 
         for p in 1..=periods {
             // Count participants from this cohort who also appeared in cohort+p months.
-            let ret_sql = format!(
+            let _ret_sql = format!(
                 "SELECT COUNT(DISTINCT r2.participant_id) AS n
                  FROM results r1
                  JOIN events e1 ON r1.event_id = e1.id

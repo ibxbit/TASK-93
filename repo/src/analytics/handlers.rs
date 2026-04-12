@@ -13,6 +13,7 @@ use super::{
     MetricResponse, RetentionQuery, RetentionResponse, TrendQuery, TrendResponse,
     UpdateMetricRequest,
 };
+use crate::middleware::rate_limit::RateLimitedToken;
 
 // ── Metric catalog ─────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ use super::{
 #[post("/metrics", data = "<body>")]
 pub async fn create_metric(
     guard: RequireFinancialsWrite,
+    _rate_limit: RateLimitedToken,
     body: Json<CreateMetricRequest>,
     conn: &State<DatabaseConnection>,
 ) -> AppResult<Json<MetricResponse>> {
@@ -63,6 +65,7 @@ pub async fn get_metric(
 #[put("/metrics/<id>", data = "<body>")]
 pub async fn update_metric(
     guard: RequireFinancialsWrite,
+    _rate_limit: RateLimitedToken,
     id: i64,
     body: Json<UpdateMetricRequest>,
     conn: &State<DatabaseConnection>,
@@ -128,7 +131,7 @@ pub async fn retention(
 
 // ── CSV download helper ────────────────────────────────────────────────────────
 
-struct CsvDownload {
+pub struct CsvDownload {
     filename: &'static str,
     body: String,
 }

@@ -42,9 +42,15 @@ fn parse_datetime(s: &str) -> AppResult<chrono::DateTime<Utc>> {
         .map_err(|_| AppError::BadRequest(format!("Invalid datetime '{s}'; expected RFC 3339")))
 }
 
-/// Minimal SemVer validation: three dot-separated non-negative integers.
+/// Minimal SemVer validation: three dot-separated non-negative integers with
+/// an optional pre-release identifier (e.g. `1.2.3-rollback`, `0.5.0-rb`).
 fn validate_semver(v: &str) -> AppResult<()> {
-    let parts: Vec<&str> = v.split('.').collect();
+    // Strip optional pre-release (`-…`) and build metadata (`+…`) before
+    // validating the numeric core so that versions like "1.2.3-rollback"
+    // are accepted.
+    let core = v.split('-').next().unwrap_or(v);
+    let core = core.split('+').next().unwrap_or(core);
+    let parts: Vec<&str> = core.split('.').collect();
     if parts.len() == 3 && parts.iter().all(|p| p.parse::<u32>().is_ok()) {
         Ok(())
     } else {

@@ -1,3 +1,4 @@
+use crate::middleware::rate_limit::RateLimitedToken;
 use rocket::{serde::json::Json, Request, State};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -29,7 +30,7 @@ pub struct RotatePasswordRequest {
 }
 
 #[derive(Serialize)]
-struct OkResponse {
+pub struct OkResponse {
     ok: bool,
 }
 
@@ -40,6 +41,7 @@ struct OkResponse {
 #[post("/auth/login", data = "<body>")]
 pub async fn login(
     body: Json<LoginRequest>,
+    _rate_limit: RateLimitedToken,
     conn: &State<DatabaseConnection>,
 ) -> AppResult<Json<LoginResponse>> {
     let result = service::login(conn.inner(), &body.username, &body.password).await?;
@@ -54,6 +56,7 @@ pub async fn login(
 #[post("/auth/logout")]
 pub async fn logout(
     user: AuthenticatedUser,
+    _rate_limit: RateLimitedToken,
     conn: &State<DatabaseConnection>,
 ) -> AppResult<Json<OkResponse>> {
     service::logout(conn.inner(), &user.session_token).await?;

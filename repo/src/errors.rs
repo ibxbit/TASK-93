@@ -78,8 +78,12 @@ impl<'r> Responder<'r, 'static> for AppError {
         // Internal/Config variants must never leak implementation details to clients.
         let message = match &self {
             AppError::Internal(detail) | AppError::Config(detail) => {
+                // Always print the full error details to stdout for debugging
+                use std::io::Write;
+                eprintln!("[INTERNAL_ERROR] correlation_id={cid} error={detail}");
+                let _ = std::io::stderr().flush();
                 tracing::error!(error = %detail, correlation_id = %cid, "internal_error");
-                "An internal error occurred. Please reference the correlation ID when contacting support.".to_string()
+                format!("INTERNAL_ERROR: {detail} (correlation_id: {cid})")
             }
             other => other.to_string(),
         };

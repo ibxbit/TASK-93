@@ -244,9 +244,40 @@ class TestPayments:
         assert body["id"] > 0
 
     def test_duplicate_external_reference_same_invoice_is_idempotent(
-        self, admin_token, invoice, ts
+        self, admin_token, ts
     ):
         """Same external_reference on the same invoice → idempotent 200."""
+        # Create a separate invoice for this test 
+        # to guarantee it is in 'issued' state and not fully paid.
+        inv = requests.post(
+            f"{BASE_URL}/invoices",
+            headers=auth_headers(admin_token),
+            json={
+                "invoice_no": f"INV-IDEM-{ts}",
+                "counterparty": "Idempotent Corp",
+                "issue_date": "2026-03-01",
+                "tax_rate": 0.0,
+            },
+            timeout=10,
+        ).json()
+        requests.post(
+            f"{BASE_URL}/invoices/{inv['id']}/lines",
+            headers=auth_headers(admin_token),
+            json={
+                "description": "Fee",
+                "pricing_model": "fixed",
+                "quantity": 1.0,
+                "unit_price": 500.0,
+            },
+            timeout=10,
+        )
+        requests.post(
+            f"{BASE_URL}/invoices/{inv['id']}/issue",
+            headers=auth_headers(admin_token),
+            json={},
+            timeout=10,
+        )
+
         ref = f"TXN-IDEM-{ts}"
         payload = {
             "amount": 100.00,
@@ -255,14 +286,14 @@ class TestPayments:
             "received_at": "2026-01-15T13:00:00Z",
         }
         r1 = requests.post(
-            f"{BASE_URL}/invoices/{invoice['id']}/payments",
+            f"{BASE_URL}/invoices/{inv['id']}/payments",
             headers=auth_headers(admin_token),
             json=payload,
             timeout=10,
         )
         assert r1.status_code == 200
         r2 = requests.post(
-            f"{BASE_URL}/invoices/{invoice['id']}/payments",
+            f"{BASE_URL}/invoices/{inv['id']}/payments",
             headers=auth_headers(admin_token),
             json=payload,
             timeout=10,

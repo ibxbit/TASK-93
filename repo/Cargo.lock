@@ -1496,6 +1496,7 @@ dependencies = [
  "dotenvy",
  "hex",
  "hmac",
+ "once_cell",
  "rocket",
  "rust_decimal",
  "sea-orm",

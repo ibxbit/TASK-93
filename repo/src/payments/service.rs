@@ -39,8 +39,10 @@ fn parse_method(s: &str) -> AppResult<PaymentMethod> {
         "cash" => Ok(PaymentMethod::Cash),
         "cheque" | "check" => Ok(PaymentMethod::Cheque),
         "ach" => Ok(PaymentMethod::Ach),
+        "bank_transfer" => Ok(PaymentMethod::BankTransfer),
+        "card" => Ok(PaymentMethod::Card),
         _ => Err(AppError::BadRequest(format!(
-            "Unknown payment method '{s}'. Valid: cash, cheque, ach"
+            "Unknown payment method '{s}'. Valid: cash, cheque, ach, bank_transfer, card"
         ))),
     }
 }
@@ -99,7 +101,10 @@ fn dec(v: f64) -> AppResult<Decimal> {
 fn tx_err(e: TransactionError<AppError>) -> AppError {
     match e {
         TransactionError::Transaction(e) => e,
-        TransactionError::Connection(e) => AppError::Internal(e.to_string()),
+        TransactionError::Connection(e) => {
+            eprintln!("[INTERNAL_ERROR] DB connection error: {}", e);
+            AppError::Internal(e.to_string())
+        },
     }
 }
 
@@ -116,10 +121,12 @@ fn parse_datetime(s: &str) -> AppResult<DateTime<Utc>> {
 // ── Crypto helpers ────────────────────────────────────────────────────────────
 
 fn enc_err(e: String) -> AppError {
+    eprintln!("[INTERNAL_ERROR] Encryption error: {}", e);
     AppError::Internal(format!("Encryption error: {e}"))
 }
 
 fn dec_err(e: String) -> AppError {
+    eprintln!("[INTERNAL_ERROR] Decryption error: {}", e);
     AppError::Internal(format!("Decryption error: {e}"))
 }
 
@@ -165,19 +172,28 @@ async fn load_payment_details(
         .order_by_asc(exception_entity::Column::CreatedAt)
         .all(conn)
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|e| {
+            eprintln!("[INTERNAL_ERROR] DB error loading exceptions: {}", e);
+            AppError::Internal(e.to_string())
+        })?;
 
     let refunds = refund_entity::Entity::find()
         .filter(refund_entity::Column::PaymentId.eq(payment.id))
         .order_by_asc(refund_entity::Column::CreatedAt)
         .all(conn)
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|e| {
+            eprintln!("[INTERNAL_ERROR] DB error loading refunds: {}", e);
+            AppError::Internal(e.to_string())
+        })?;
 
     // Decrypt the external reference for the API response.
     let ext_ref_plain = cipher
         .decrypt(&payment.external_reference)
-        .map_err(dec_err)?;
+        .map_err(|e| {
+            eprintln!("[INTERNAL_ERROR] Decryption error: {}", e);
+            dec_err(e)
+        })?;
 
     Ok(PaymentResponse {
         id: payment.id,
@@ -294,11 +310,13 @@ pub async fn record_payment(
 
     let now = Utc::now();
 
-    let (updated_inv, new_payment_id) = conn
+    let result = conn
         .transaction::<_, (invoice_entity::Model, i64), AppError>(|txn| {
             let ext_ref_encrypted = ext_ref_encrypted.clone();
             let ref_hash = ref_hash.clone();
             let inv = inv.clone();
+            let method = method.clone();
+            let req = req.clone();
             Box::pin(async move {
                 let payment = PaymentActiveModel {
                     invoice_id: Set(invoice_id),
@@ -345,8 +363,38 @@ pub async fn record_payment(
                 Ok((updated_inv, payment_id))
             })
         })
-        .await
-        .map_err(tx_err)?;
+        .await;
+
+    let (updated_inv, new_payment_id) = match result {
+        Ok(val) => val,
+        Err(e) => {
+            let is_conflict = match &e {
+                TransactionError::Transaction(AppError::Conflict(_)) => true,
+                _ => e.to_string().contains("already exists") || e.to_string().contains("UNIQUE"),
+            };
+
+            if is_conflict {
+                // Secondary check: if it was a race condition or stale data from a previous run,
+                // the record should now be visible or already present in the DB.
+                if let Some(existing) = payment_entity::Entity::find()
+                    .filter(payment_entity::Column::ReferenceHash.eq(&ref_hash))
+                    .one(conn)
+                    .await
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+                {
+                    if existing.invoice_id != invoice_id {
+                        return Err(AppError::Conflict(format!(
+                            "external_reference already recorded against a different invoice ({})",
+                            existing.invoice_id
+                        )));
+                    }
+                    // Success: return the existing record (idempotent result)
+                    return load_payment_details(conn, cipher, existing).await;
+                }
+            }
+            return Err(tx_err(e));
+        }
+    };
 
     tracing::info!(
         invoice_id,

@@ -1,5 +1,5 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM rust:1.88-slim AS builder
+FROM rust:1.88.0 AS builder
 
 WORKDIR /app
 
@@ -7,6 +7,7 @@ WORKDIR /app
 # pkg-config is needed by some crates to locate system headers.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Dependency caching layer ──────────────────────────────────────────────────
@@ -24,12 +25,15 @@ RUN rm -rf src \
         target/release/motorsport_backend* \
         target/release/.fingerprint/motorsport-backend*
 
+# Install sea-orm-cli for DB migrations
+RUN cargo install sea-orm-cli --version 2.0.0-rc.38
+
 # ── Application build ─────────────────────────────────────────────────────────
 COPY src ./src
 # Refresh dependency versions against the running toolchain so any MSRV
 # mismatch between the committed Cargo.lock and the builder image is
 # resolved automatically before the real compile.
-RUN cargo update
+# RUN cargo update
 RUN cargo build --release
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
@@ -40,12 +44,18 @@ RUN groupadd -r motorsport && useradd -r -g motorsport motorsport
 
 WORKDIR /app
 
+
+# Install wget and libssl3 for the HEALTHCHECK command and sea-orm-cli runtime.
+# This layer is placed BEFORE the binary COPY so that source-code changes
+# (which invalidate the COPY layer) do not force a re-run of apt-get.
+RUN apt-get update && apt-get install -y --no-install-recommends wget libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy only the compiled binary.
 COPY --from=builder /app/target/release/motorsport-backend /app/motorsport-backend
 
-# Install wget for the HEALTHCHECK command.
-RUN apt-get update && apt-get install -y --no-install-recommends wget \
-    && rm -rf /var/lib/apt/lists/*
+# Copy sea-orm-cli for migrations
+COPY --from=builder /usr/local/cargo/bin/sea-orm-cli /usr/local/bin/sea-orm-cli
 
 # Create runtime directories.
 #   /app/data    — SQLite database file  (named volume)
@@ -60,7 +70,7 @@ USER motorsport
 # All values are overridable via docker-compose env_file or -e flags.
 ENV HOST=0.0.0.0
 ENV PORT=8000
-ENV LOG_LEVEL=info
+ENV LOG_LEVEL=debug
 ENV DATABASE_URL=sqlite:///app/data/motorsport.db
 ENV BACKUP_DIR=/app/backups
 ENV BACKUP_RETAIN_DAYS=7

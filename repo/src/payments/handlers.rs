@@ -10,6 +10,7 @@ use super::{
     service, ApproveRefundRequest, ExceptionResponse, HandleExceptionRequest, PaymentResponse,
     RecordPaymentRequest, RefundResponse, RejectRefundRequest, RequestRefundRequest,
 };
+use crate::middleware::rate_limit::RateLimitedToken;
 
 // ── Record / list payments ────────────────────────────────────────────────────
 
@@ -178,6 +179,7 @@ pub async fn reject_refund(
 #[get("/invoices/<invoice_id>/payments/<payment_id>/exceptions")]
 pub async fn list_exceptions(
     _guard: RequireFinancialsRead,
+    _rate_limit: RateLimitedToken,
     invoice_id: i64,
     payment_id: i64,
     conn: &State<DatabaseConnection>,

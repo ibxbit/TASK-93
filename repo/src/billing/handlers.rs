@@ -8,6 +8,7 @@ use super::{
     service, AddLineRequest, ApplyDiscountRequest, CreateInvoiceRequest, InvoiceFilterQuery,
     InvoiceResponse, IssueInvoiceRequest,
 };
+use crate::middleware::rate_limit::RateLimitedToken;
 
 // ── Create ────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ use super::{
 #[post("/invoices", data = "<body>")]
 pub async fn create_invoice(
     guard: RequireFinancialsWrite,
+    _rate_limit: RateLimitedToken,
     body: Json<CreateInvoiceRequest>,
     conn: &State<DatabaseConnection>,
 ) -> AppResult<Json<InvoiceResponse>> {
@@ -73,6 +75,7 @@ pub async fn list_invoices(
 #[post("/invoices/<id>/lines", data = "<body>")]
 pub async fn add_line(
     guard: RequireFinancialsWrite,
+    _rate_limit: RateLimitedToken,
     id: i64,
     body: Json<AddLineRequest>,
     conn: &State<DatabaseConnection>,
@@ -93,6 +96,7 @@ pub async fn add_line(
 #[post("/invoices/<id>/discount", data = "<body>")]
 pub async fn apply_discount(
     guard: RequireFinancialsWrite,
+    _rate_limit: RateLimitedToken,
     id: i64,
     body: Json<ApplyDiscountRequest>,
     conn: &State<DatabaseConnection>,
@@ -113,6 +117,7 @@ pub async fn apply_discount(
 #[post("/invoices/<id>/issue", data = "<body>")]
 pub async fn issue_invoice(
     guard: RequireFinancialsWrite,
+    _rate_limit: RateLimitedToken,
     id: i64,
     body: Json<IssueInvoiceRequest>,
     conn: &State<DatabaseConnection>,

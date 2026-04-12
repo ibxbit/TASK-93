@@ -5,7 +5,6 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, TransactionError, TransactionTrait,
 };
-use std::str::FromStr;
 
 use crate::audit;
 use crate::entity::enums::{AdjustmentType, InvoiceStatus, PricingModel};

@@ -1,3 +1,4 @@
+use crate::middleware::rate_limit::RateLimitedToken;
 use chrono::Utc;
 use rocket::{serde::json::Json, Request, State};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
@@ -20,7 +21,7 @@ pub struct RoleChangeRequest {
 }
 
 #[derive(Serialize)]
-struct OkResponse {
+pub struct OkResponse {
     ok: bool,
 }
 
@@ -49,6 +50,7 @@ async fn resolve_role_id(conn: &DatabaseConnection, role: Role) -> AppResult<i64
 #[post("/admin/roles/assign", data = "<body>")]
 pub async fn assign_role(
     admin: RequireRolesManage,
+    _rate_limit: RateLimitedToken,
     body: Json<RoleChangeRequest>,
     conn: &State<DatabaseConnection>,
 ) -> AppResult<Json<OkResponse>> {

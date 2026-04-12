@@ -1,3 +1,4 @@
+use crate::middleware::rate_limit::RateLimitedToken;
 use rocket::{serde::json::Json, State};
 use sea_orm::DatabaseConnection;
 
@@ -21,6 +22,7 @@ use super::{
 #[post("/assets", data = "<body>")]
 pub async fn create_asset(
     guard: RequireEventsWrite,
+    _rate_limit: RateLimitedToken,
     body: Json<CreateAssetRequest>,
     conn: &State<DatabaseConnection>,
     cipher: &State<Cipher>,

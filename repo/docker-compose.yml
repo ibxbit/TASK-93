@@ -31,6 +31,10 @@ services:
       # Nightly SQLite backup files — retained for BACKUP_RETAIN_DAYS days.
       - motorsport_backups:/app/backups
 
+      # Migration config and scripts for sea-orm-cli
+      - ./sea-orm-cli.toml:/app/sea-orm-cli.toml:ro
+      - ./src/migration:/app/src/migration:ro
+
     # Hard limits prevent runaway resource usage on a shared host.
     deploy:
       resources:
@@ -53,6 +57,28 @@ services:
       options:
         max-size: "50m"
         max-file: "7"    # aligns with BACKUP_RETAIN_DAYS default
+
+  # Rust build/test container for running cargo test (has cargo and build deps)
+  tester:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    image: motorsport-backend-builder:latest
+    container_name: motorsport-backend-tester
+    volumes:
+      - .:/app
+    working_dir: /app
+    entrypoint: ["/bin/bash", "-c"]
+    command: ["cargo test --release"]
+    environment:
+      DATABASE_URL: sqlite:///app/data/motorsport.db
+      HOST: 0.0.0.0
+      PORT: "8000"
+      LOG_LEVEL: info
+      BACKUP_RETAIN_DAYS: "7"
+      BACKUP_DIR: /app/backups
+      ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 
   # Integration test runner — used for automated validation.
   # Run with: docker compose run --rm integration-test

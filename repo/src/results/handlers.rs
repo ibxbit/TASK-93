@@ -7,7 +7,7 @@ use sea_orm::DatabaseConnection;
 
 // ── CSV download helper ────────────────────────────────────────────────────────
 
-struct CsvDownload {
+pub struct CsvDownload {
     filename: String,
     body: String,
 }

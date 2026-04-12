@@ -1,3 +1,4 @@
+use crate::middleware::rate_limit::RateLimitedToken;
 use rocket::{serde::json::Json, State};
 use sea_orm::DatabaseConnection;
 
@@ -20,6 +21,7 @@ use super::{
 #[post("/vehicles", data = "<body>")]
 pub async fn create_vehicle(
     guard: RequireEventsWrite,
+    _rate_limit: RateLimitedToken,
     body: Json<CreateVehicleRequest>,
     conn: &State<DatabaseConnection>,
     cipher: &State<Cipher>,
