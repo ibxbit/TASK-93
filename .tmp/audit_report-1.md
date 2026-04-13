@@ -1,93 +1,220 @@
-# Static Audit Report: Motorsport Event Operations and Asset Settlement Backend
+# 1. Verdict
 
-## 1. Verdict
-**Overall Conclusion**: Pass
+**Overall Conclusion:**  
+**Partial Pass**
 
-Based on static analysis of the codebase, documentation, and the test suite, the submitted repository is an exceptionally aligned, complete, and professionally structured 0-to-1 deliverable. 
-All core requirements from the Prompt have been accurately implemented without resorting to surface-level mocks or omitting hard requirements. The codebase exhibits a high level of maintainability, correct architectural boundaries, robust identity and domain security, and comprehensive automated test coverage mapping cleanly to the prompt's scenario.
+- The project delivers a highly complete, well-structured, and security-conscious backend for motorsport event operations and asset settlement, with strong static evidence for most core requirements.
+- However, several material issues and static coverage gaps remain (see Issues/Suggestions).
 
-## 2. Scope and Static Verification Boundary
-- **Reviewed**: 
-  - Entire `repo/src` Rust codebase (Rocket handlers, SeaORM persistence, encryption logic).
-  - API and business logic handlers mapping to core flows (Results, Assets, Events, Billing, Auth, Analytics).
-  - Both integration test suites (`repo/API_tests/**`) and unit test suites (`repo/unit_tests/**`).
-  - Project setup documentation (`repo/Dockerfile`, `repo/docker-compose.yml`, `README.md`, environment configuration).
-- **Not Executed**: No test files, docker containers, or runtime endpoints were executed during this analysis. 
-- **Dependencies requiring Manual Verification**: Concurrency controls mapping strictly to runtime execution under high concurrent load (p95 < 250ms with 50 concurrent requests target).
+---
 
-## 3. Repository / Requirement Mapping Summary
-- **Core Business Goal**: End-to-end management of offline motorsport events, results tracking/arbitration, asset lifecycle, and billing.
-- **Roles & Authentication**: Local password-based authentication mapping securely to salted Argon2 hashes and least-privilege endpoints.
-- **Offline Ledger**: Achieved via purely local SQLite, offline billing implementations with idempotent payment entries.
-- **Crypto & Security**: AES-256 for references. Audit logs appending successfully across business flows.
+# 2. Scope and Static Verification Boundary
 
-## 4. Section-by-section Review
+**Reviewed:**
+- All documentation: [repo/README.md](repo/README.md), [docs/api_spec.md](docs/api_spec.md), [docs/design.md](docs/design.md), [docs/questions.md](docs/questions.md)
+- All main Rust source modules, migrations, and entity definitions
+- All API and unit tests (Python)
+- Docker and deployment configs
 
-### 1. Hard Gates
-- **1.1 Documentation and static verifiability**: Pass. The repository provides a clear `README.md`, Docker setup, shell scripts for test execution (`run_tests.sh`), and standard `Cargo` usage definitions. Evidence: `repo/README.md`, `repo/Dockerfile`.
-- **1.2 Deviations from Prompt**: Pass. The implementation aligns tightly with the business rules, e.g., discounts capped at $500, results tie-breakers, and multi-referee logic mapping precisely to the requested schema. Evidence: `src/billing/service.rs:215`, `src/results/service.rs:840`.
+**Not Reviewed:**
+- No runtime execution, no Docker/container run, no database instantiation, no actual HTTP/API calls
 
-### 2. Delivery Completeness
-- **2.1 Core Requirement Coverage**: Pass. Roles, rulesets, asset lifecycles, and manual offline "payments" with idempotency keys are all physically implemented in handlers and service structures. Evidence: `src/payments/service.rs:290`.
-- **2.2 End-to-End Project Shape**: Pass. This is a complete monolith server equipped with database schemas, full routing configurations, metrics, data-quality scans, and fully stubbed backend routing contexts. No hardcoded logic without an associated domain entity was found. 
+**Intentionally Not Executed:**
+- No tests, migrations, or server run
+- No external integrations
 
-### 3. Engineering and Architecture Quality
-- **3.1 Module Decomposition**: Pass. Domain logic is smartly separated (e.g., `audit`, `billing`, `analytics`, `crypto`, `auth`). Strong layered architecture limits Rocket handlers to transport interactions, delegating transactions and core calculations to the service layers.
-- **3.2 Maintainability**: Pass. Usage of typed macros, constant constraints (`MAX_DISCOUNT_AMOUNT = 500`), and safe abstractions ensures confident extensibility. Evidence: `src/billing/service.rs:26`.
+**Manual Verification Required:**
+- Actual API behavior, encryption at rest, backup rotation, and audit log immutability require runtime/manual verification.
 
-### 4. Engineering Details and Professionalism
-- **4.1 Quality Elements**: Pass. Global request formatting (`catch_unauthorized`), valid SQL transactional rollback wrappers, decimal limits for precision billing (`rust_decimal` implementation). 
-- **4.2 Product Credibility**: Pass. The architecture mimics a genuine on-premises production backend capable of scale.
+---
 
-### 5. Prompt Understanding and Requirement Fit
-- **5.1 Business Objective alignment**: Pass. Features like arbitration conflict resolution, vehicle lifecycle status transitions, and data scans map seamlessly to the constraints mentioned in the Prompt. Meaningful state constraints (mileage non-decreasing) were verified. Evidence: `src/vehicles/service.rs:348`.
+# 3. Repository / Requirement Mapping Summary
 
-## 5. Issues / Suggestions (Severity-Rated)
+**Prompt Core Business Goals:**
+- End-to-end offline motorsport event and asset management, with audit-grade traceability, RBAC, billing, results, arbitration, asset/vehicle lifecycle, and analytics.
 
-- **Medium - Manual Key Setup Risk**
-  - **Conclusion**: Unsafe crash on missing key.
-  - **Evidence**: `src/main.rs:98` (`Cipher::from_base64_key(...).unwrap_or_else()`).
-  - **Impact**: While terminating the app without a key is safe, failing implicitly before a descriptive check might make initial customer deployment slightly frictional. 
-  - **Fix**: Consider logging a prominent custom configuration warning pointing to documentation when the `.env` encryption key is critically missing or malformed prior to standard panic procedures.
+**Implementation Mapping:**
+- Rocket + SeaORM + SQLite, modularized by domain (competition, results, billing, assets, vehicles, audit, RBAC, etc.)
+- Resource-scoped APIs, strong RBAC, append-only audit log, field-level encryption, backup, and data quality modules
+- Comprehensive API and unit tests for all major flows
 
-- **Low - Fixed-Rate Decimal Cap Checking**
-  - **Conclusion**: Valid percentage and fixed discount boundaries.
-  - **Evidence**: `src/billing/service.rs`
-  - **Impact**: Code handles boundaries appropriately.
-  - **Fix**: None strictly required. Code is extremely sound.
+---
 
-## 6. Security Review Summary
-- **Authentication Entry Points**: Pass. Username and password handling properly implemented with `Argon2`. Session tokens are successfully rotated and hashes are stored in place of plaintext tokens (`src/auth/service.rs:66`).
-- **Route-Level Authorization**: Pass. Middleware enforces token validity before payload decoding (`src/auth/handlers.rs`).
-- **Object-Level Authorization**: Pass. RBAC middleware actively parses user permissions against routes. Evidence: `src/rbac/`.
-- **Data Isolation/Encryption**: Pass. AES-256 field-level encryption correctly employs 96-bit nonces, storing Base64 combined ciphertext. Determinstic HMAC-SHA256 digests exist for blind index matching on VIN/References (`src/crypto.rs`).
+# 4. Section-by-section Review
 
-## 7. Tests and Logging Review
-- **Unit & Integration Tests**: Pass. The repository has a rich PyTest-based integration test framework `repo/API_tests/*.py` mapping endpoints natively with explicit role credentials (`conftest.py:22`).
-- **Logging & Observability**: Pass. Output implements structured `tracing_subscriber` with correlation ID injection via fairings (`src/main.rs:152`). Sensitive logging appropriately masked natively. Evidence: `src/crypto.rs:163`.
+## 1. Hard Gates
 
-## 8. Test Coverage Assessment (Static Audit)
+### 1.1 Documentation and Static Verifiability
+- **Conclusion:** Pass
+- **Rationale:** Clear startup, config, and structure ([repo/README.md](repo/README.md)), [docker-compose.yml](repo/docker-compose.yml), [docs/api_spec.md](docs/api_spec.md))
+- **Evidence:** [repo/README.md](repo/README.md), [docs/api_spec.md](docs/api_spec.md)
 
-### 8.1 Test Overview
-- Unit and robust route HTTP integration tests exist natively in the `repo/API_tests/` and `repo/unit_tests/` folders.
-- Testing frameworks are statically defined correctly (`pytest`). Shell commands are available (`repo/run_tests.sh`).
+### 1.2 Material Deviation from Prompt
+- **Conclusion:** Partial Pass
+- **Rationale:** Core flows are implemented, but some advanced analytics and data quality flows are only partially evidenced.
+- **Evidence:** [docs/design.md](docs/design.md), [src/entity/](src/entity/), [API_tests/](API_tests/)
 
-### 8.2 Coverage Mapping Table
-| Requirement / Risk Point | Mapped Test File(s) | Assessment | Gap / Notes |
-|---|---|---|---|
-| Tie-breakers & Arbitration | `API_tests/test_results.py` | Sufficient | Tests rank generation logic natively. |
-| Mileage Non-Decreasing | `API_tests/test_vehicles.py` | Sufficient | Edge cases included for decreasing updates throwing `422`. |
-| Billing & Max Discounts | `API_tests/test_billing.py` | Sufficient | Validates $500 capping correctly. |
-| Idempotency offline | `API_tests/test_billing.py` (simulated payment flows) | Sufficient | Simulates duplicate external reference matching. |
+## 2. Delivery Completeness
 
-### 8.3 Security Coverage Audit
-- **Authentication**: `API_tests/test_auth.py` meaningfully covers login and token interactions.
-- **Route/Object Authorization**: `API_tests/test_rbac.py` tests all functional limits across Administrator, Event Director, Referee, Finance Clerk, and Auditor paths comprehensively.
-- **Admin protection**: Read/Write boundary correctly protected explicitly. 
+### 2.1 Core Requirements Coverage
+- **Conclusion:** Partial Pass
+- **Rationale:** Most core requirements are implemented, but some advanced analytics, data quality, and edge-case flows lack full static/test evidence.
+- **Evidence:** [src/entity/](src/entity/), [API_tests/](API_tests/), [unit_tests/](unit_tests/)
 
-### 8.4 Final Coverage Judgment
-- **Conclusion**: Pass
-- **Explanation**: The testing suite demonstrates heavy domain-aligned mapping covering failure behaviors (401, 403, conflict handling). Major risks like session leaking, duplicate result injection, and invalid cross-role transitions have been thoughtfully verified by the developer's automated suite.
+### 2.2 End-to-End Deliverable
+- **Conclusion:** Pass
+- **Rationale:** Full project structure, no single-file demo, clear documentation.
+- **Evidence:** [repo/README.md](repo/README.md), [src/main.rs](src/main.rs)
 
-## 9. Final Notes
-The repository stands as a prime example of excellent requirement implementation meeting strict architectural constraints. No serious logical gaps or architectural flaws exist, and constraints specified by the Prompt regarding edge-behavior mapping are fully implemented. 
+## 3. Engineering and Architecture Quality
+
+### 3.1 Structure and Decomposition
+- **Conclusion:** Pass
+- **Rationale:** Modular, domain-driven, clear separation of concerns.
+- **Evidence:** [src/](src/), [src/entity/](src/entity/)
+
+### 3.2 Maintainability and Extensibility
+- **Conclusion:** Pass
+- **Rationale:** Service/handler separation, extensible entities, migrations.
+- **Evidence:** [src/](src/), [src/entity/](src/entity/)
+
+## 4. Engineering Details and Professionalism
+
+### 4.1 Error Handling, Logging, Validation
+- **Conclusion:** Pass
+- **Rationale:** Structured logging, error types, validation, correlation IDs.
+- **Evidence:** [src/middleware/logger.rs](src/middleware/logger.rs), [unit_tests/test_validation.py](unit_tests/test_validation.py)
+
+### 4.2 Product Organization
+- **Conclusion:** Pass
+- **Rationale:** Realistic product structure, not a demo.
+- **Evidence:** [repo/](repo/)
+
+## 5. Prompt Understanding and Requirement Fit
+
+### 5.1 Requirement Understanding
+- **Conclusion:** Pass
+- **Rationale:** Implementation closely matches prompt semantics and constraints.
+- **Evidence:** [docs/design.md](docs/design.md), [src/entity/](src/entity/)
+
+## 6. Aesthetics
+- **Conclusion:** Not Applicable
+- **Rationale:** Backend-only, no frontend.
+
+---
+
+# 5. Issues / Suggestions (Severity-Rated)
+
+### Blocker
+
+- **None found.**
+
+### High
+
+- **Advanced Analytics and Data Quality Coverage Gaps**
+  - **Conclusion:** Partial Pass
+  - **Evidence:** [API_tests/test_results.py](API_tests/test_results.py), [API_tests/test_data_quality.py](API_tests/test_data_quality.py)
+  - **Impact:** Some advanced analytics (trend/funnel/retention) and data quality (outlier/duplicate) flows are only partially evidenced by static tests and code.
+  - **Minimum Fix:** Add more explicit test cases and static evidence for all analytics/data quality requirements.
+
+### Medium
+
+- **Manual Verification Required for Encryption at Rest and Audit Immutability**
+  - **Conclusion:** Cannot Confirm Statistically
+  - **Evidence:** [src/entity/vehicle.rs](src/entity/vehicle.rs), [src/entity/payment_entry.rs](src/entity/payment_entry.rs), [src/entity/audit_log.rs](src/entity/audit_log.rs)
+  - **Impact:** Field-level encryption and append-only audit log are implemented, but actual cryptographic enforcement and DB triggers require runtime/manual verification.
+  - **Minimum Fix:** Manual/automated runtime verification.
+
+- **RBAC Permission Mapping Not Fully Proven for All Endpoints**
+  - **Conclusion:** Partial Pass
+  - **Evidence:** [API_tests/test_rbac.py](API_tests/test_rbac.py), [src/rbac/](src/rbac/)
+  - **Impact:** While RBAC is strong, some edge-case permission boundaries (object-level, cross-role) are not exhaustively covered in static tests.
+  - **Minimum Fix:** Expand test coverage for all roles and endpoints.
+
+### Low
+
+- **Minor Documentation Gaps**
+  - **Conclusion:** Partial Pass
+  - **Evidence:** [repo/README.md](repo/README.md), [docs/api_spec.md](docs/api_spec.md)
+  - **Impact:** Some advanced flows and config options are not fully documented.
+  - **Minimum Fix:** Expand documentation for advanced/edge-case flows.
+
+---
+
+# 6. Security Review Summary
+
+| Area                        | Conclusion                  | Evidence/Notes |
+|-----------------------------|-----------------------------|---------------|
+| Authentication Entry Points  | Pass                        | [src/auth/handlers.rs](src/auth/handlers.rs), [API_tests/test_auth.py](API_tests/test_auth.py) |
+| Route-level Authorization    | Pass                        | [src/rbac/handlers.rs](src/rbac/handlers.rs), [API_tests/test_rbac.py](API_tests/test_rbac.py) |
+| Object-level Authorization   | Partial Pass                | [src/rbac/](src/rbac/), [API_tests/test_rbac.py](API_tests/test_rbac.py) |
+| Function-level Authorization | Partial Pass                | [src/rbac/guards.rs](src/rbac/guards.rs) |
+| Tenant/User Data Isolation   | Pass                        | [src/entity/](src/entity/), [API_tests/](API_tests/) |
+| Admin/Internal Protection    | Pass                        | [API_tests/test_rbac.py](API_tests/test_rbac.py) |
+
+---
+
+# 7. Tests and Logging Review
+
+**Unit Tests:**  
+- Pass — [unit_tests/](unit_tests/), [unit_tests/test_business_logic.py](unit_tests/test_business_logic.py)
+
+**API/Integration Tests:**  
+- Pass — [API_tests/](API_tests/), [API_tests/test_auth.py](API_tests/test_auth.py)
+
+**Logging/Observability:**  
+- Pass — Structured logging, correlation IDs ([src/middleware/logger.rs](src/middleware/logger.rs))
+
+**Sensitive Data Leakage:**  
+- Pass — Masking and encryption for sensitive fields ([src/entity/vehicle.rs](src/entity/vehicle.rs), [src/entity/payment_entry.rs](src/entity/payment_entry.rs))
+
+---
+
+# 8. Test Coverage Assessment (Static Audit)
+
+## 8.1 Test Overview
+
+- Unit and API/integration tests exist for all major flows.
+- Framework: pytest (Python)
+- Entry points: [API_tests/](API_tests/), [unit_tests/](unit_tests/)
+- Test commands documented: [repo/README.md](repo/README.md)
+
+## 8.2 Coverage Mapping Table
+
+| Requirement / Risk Point                | Mapped Test(s) / Evidence                | Coverage Assessment | Gap / Minimum Test Addition |
+|-----------------------------------------|------------------------------------------|---------------------|----------------------------|
+| Auth (login/logout, 401/403)            | [API_tests/test_auth.py](API_tests/test_auth.py) | Sufficient          | —                          |
+| RBAC (all roles, cross-role)            | [API_tests/test_rbac.py](API_tests/test_rbac.py) | Basically covered   | Add more edge-case tests   |
+| Results/Arbitration/Correction          | [API_tests/test_results.py](API_tests/test_results.py), [unit_tests/test_results_logic.py](unit_tests/test_results_logic.py) | Sufficient          | —                          |
+| Asset/Vehicle Lifecycle                 | [API_tests/test_assets.py](API_tests/test_assets.py), [API_tests/test_vehicles.py](API_tests/test_vehicles.py) | Sufficient          | —                          |
+| Billing/Discount/Refund                 | [API_tests/test_billing.py](API_tests/test_billing.py) | Sufficient          | —                          |
+| Data Quality/Analytics                  | [API_tests/test_data_quality.py](API_tests/test_data_quality.py), [unit_tests/test_data_quality_logic.py](unit_tests/test_data_quality_logic.py) | Partial             | Add more advanced cases    |
+| Audit Log Immutability                  | [API_tests/test_audit.py](API_tests/test_audit.py) | Sufficient (static) | Manual DB verification     |
+| Encryption at Rest                      | [unit_tests/test_encryption_logic.py](unit_tests/test_encryption_logic.py) | Partial             | Manual/automated runtime   |
+
+## 8.3 Security Coverage Audit
+
+- Authentication: Sufficient
+- Route Authorization: Sufficient
+- Object-level Authorization: Partial (edge cases)
+- Tenant/Data Isolation: Sufficient
+- Admin/Internal Protection: Sufficient
+
+## 8.4 Final Coverage Judgment
+
+**Partial Pass**  
+- Major risks are covered by static tests.
+- Some advanced analytics/data quality, object-level RBAC, and cryptographic enforcement require more tests or manual verification.
+
+---
+
+# 9. Final Notes
+
+- The project is robust, modular, and security-focused, with strong static evidence for most requirements.
+- Some advanced flows, edge-case RBAC, and cryptographic enforcement require additional tests or manual verification.
+- No Blockers found; main issues are coverage/documentation gaps and runtime-verification requirements.
+
+---
+
+**This report is ready for delivery.**
+If you need the full markdown file written to .tmp, let me know the desired filename.
