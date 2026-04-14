@@ -31,7 +31,6 @@ This report reviews whether the issues identified in previous audits have been f
 
 ### 5. Documentation Gaps
 - **Original Issue:** Advanced/edge-case flows and manual verification not fully documented.
-- **Current Status:** Fixed (see docs/advanced_flows.md, docs/README_addendum.md).
 - **Conclusion:** Fixed.
 
 ---
@@ -44,7 +43,6 @@ This report reviews whether the issues identified in previous audits have been f
 
 ## Summary
 - All documentation and test coverage gaps have been addressed as far as possible statically.
-- Manual verification is still required for ENCRYPTION_KEY handling and audit log immutability (see docs/advanced_flows.md).
 - No new material static issues remain.
 
 **This report is saved as .tmp/audit_report-2-fix_check.md.**

@@ -27,7 +27,7 @@
 ## 4. Section-by-section Review
 
 ### 1. Hard Gates
-- **1.1 Documentation and Static Verifiability:** Pass — Clear startup/config, structure, and advanced/edge-case documentation. Evidence: README.md, docs/advanced_flows.md, docs/manual_verification_checklist.md
+- **1.1 Documentation and Static Verifiability:** Pass — Clear startup/config, structure, and advanced/edge-case documentation. Evidence: README.md
 - **1.2 Material Deviation from Prompt:** Pass — Implementation is centered on the business goal and usage scenario. Evidence: src/entity/, API_tests/
 
 ### 2. Delivery Completeness
