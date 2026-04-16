@@ -28,6 +28,7 @@ hmac        = "0.12"
 sea-orm           = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "chrono", "with-rust_decimal"] }
 sea-orm-migration = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls"] }
 rust_decimal      = { version = "1", features = ["serde"] }
+rust_decimal_macros = "1"
 
 # Auth
 argon2      = "0.5"

@@ -1,5 +1,7 @@
 # Motorsport Backend
 
+Project Type: backend
+
 Offline-first REST API for motorsport event management. Handles events, vehicles, assets, billing, payments, results, audit logging, and nightly backups — all running on a single SQLite database with no external dependencies.
 
 ---
@@ -7,7 +9,7 @@ Offline-first REST API for motorsport event management. Handles events, vehicles
 ## Start Command
 
 ```bash
-docker compose up
+docker-compose up
 ```
 
 That's it. On first launch the container:
@@ -340,12 +342,8 @@ Events in this system are configuration-driven via **rulesets**, which serve as 
 4. **Roll back or upgrade** — create a new ruleset version and create a new event referencing it; historical events retain their original ruleset.
 
 ### Ruleset endpoints
-| Method | Path | Permission |
-|--------|------|------------|
-| POST | `/rulesets` | events:write |
-| GET | `/rulesets` | events:read |
-| GET | `/rulesets/<id>` | events:read |
-| POST | `/rulesets/<id>/rollback` | events:write |
+
+See [API Endpoints](#api-endpoints) → *Events & Rulesets* for the canonical route list.
 
 > **Immutability:** Ruleset rows are never modified after creation. To supersede a version, use `POST /rulesets/<id>/rollback` which creates a new version whose `rollback_of` field links back to the original. This preserves a complete, auditable version chain.
 

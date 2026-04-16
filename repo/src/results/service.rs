@@ -970,3 +970,175 @@ pub async fn export_results_csv(
 
     Ok(csv)
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Native Rust unit tests
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::enums::{ResultUnit, ReviewDecision, ReviewedState};
+    use crate::entity::result_review as review_entity;
+    use chrono::Utc;
+
+    // ── parse_unit ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_unit_milliseconds() {
+        assert_eq!(parse_unit("milliseconds").unwrap(), ResultUnit::Milliseconds);
+    }
+
+    #[test]
+    fn parse_unit_all_valid_variants() {
+        let cases = [
+            ("milliseconds", ResultUnit::Milliseconds),
+            ("feet",         ResultUnit::Feet),
+            ("inches",       ResultUnit::Inches),
+            ("seconds",      ResultUnit::Seconds),
+            ("meters",       ResultUnit::Meters),
+            ("kilometers",   ResultUnit::Kilometers),
+            ("kilograms",    ResultUnit::Kilograms),
+            ("points",       ResultUnit::Points),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(parse_unit(input).unwrap(), expected, "failed for {input}");
+        }
+    }
+
+    #[test]
+    fn parse_unit_rejects_unknown() {
+        let err = parse_unit("furlongs").unwrap_err();
+        match err {
+            AppError::BadRequest(msg) => assert!(msg.contains("furlongs")),
+            other => panic!("expected BadRequest, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unit_str_roundtrips_all_variants() {
+        let units = [
+            ResultUnit::Milliseconds, ResultUnit::Feet, ResultUnit::Inches,
+            ResultUnit::Seconds, ResultUnit::Meters, ResultUnit::Kilometers,
+            ResultUnit::Kilograms, ResultUnit::Points,
+        ];
+        for u in units {
+            let s = unit_str(&u);
+            assert_eq!(parse_unit(s).unwrap(), u, "roundtrip failed for {s}");
+        }
+    }
+
+    // ── is_ascending ────────────────────────────────────────────────────────
+
+    #[test]
+    fn time_units_are_ascending() {
+        assert!(is_ascending(&ResultUnit::Milliseconds));
+        assert!(is_ascending(&ResultUnit::Seconds));
+    }
+
+    #[test]
+    fn non_time_units_are_descending() {
+        assert!(!is_ascending(&ResultUnit::Feet));
+        assert!(!is_ascending(&ResultUnit::Points));
+        assert!(!is_ascending(&ResultUnit::Kilograms));
+        assert!(!is_ascending(&ResultUnit::Meters));
+        assert!(!is_ascending(&ResultUnit::Kilometers));
+        assert!(!is_ascending(&ResultUnit::Inches));
+    }
+
+    // ── parse_review_decision ────────────────────────────────────────────────
+
+    #[test]
+    fn parse_decision_approved() {
+        assert_eq!(parse_review_decision("approved").unwrap(), ReviewDecision::Approved);
+    }
+
+    #[test]
+    fn parse_decision_rejected() {
+        assert_eq!(parse_review_decision("rejected").unwrap(), ReviewDecision::Rejected);
+    }
+
+    #[test]
+    fn parse_decision_invalid_returns_bad_request() {
+        assert!(parse_review_decision("maybe").is_err());
+    }
+
+    #[test]
+    fn decision_str_roundtrips() {
+        assert_eq!(parse_review_decision(decision_str(&ReviewDecision::Approved)).unwrap(), ReviewDecision::Approved);
+        assert_eq!(parse_review_decision(decision_str(&ReviewDecision::Rejected)).unwrap(), ReviewDecision::Rejected);
+    }
+
+    // ── derive_reviewed_state ───────────────────────────────────────────────
+
+    fn make_review(decision: ReviewDecision) -> review_entity::Model {
+        review_entity::Model {
+            id: 1,
+            result_id: 1,
+            referee_id: 1,
+            decision,
+            comment: None,
+            reviewed_at: Utc::now(),
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn no_reviews_is_pending() {
+        assert_eq!(derive_reviewed_state(&[], false), ReviewedState::Pending);
+        assert_eq!(derive_reviewed_state(&[], true), ReviewedState::Pending);
+    }
+
+    #[test]
+    fn single_approval_approves_non_championship() {
+        let reviews = vec![make_review(ReviewDecision::Approved)];
+        assert_eq!(derive_reviewed_state(&reviews, false), ReviewedState::Approved);
+    }
+
+    #[test]
+    fn single_approval_stays_pending_in_championship() {
+        let reviews = vec![make_review(ReviewDecision::Approved)];
+        assert_eq!(derive_reviewed_state(&reviews, true), ReviewedState::Pending);
+    }
+
+    #[test]
+    fn two_approvals_approve_championship() {
+        let reviews = vec![
+            make_review(ReviewDecision::Approved),
+            make_review(ReviewDecision::Approved),
+        ];
+        assert_eq!(derive_reviewed_state(&reviews, true), ReviewedState::Approved);
+    }
+
+    #[test]
+    fn any_rejection_rejects_immediately() {
+        let reviews = vec![
+            make_review(ReviewDecision::Approved),
+            make_review(ReviewDecision::Rejected),
+        ];
+        assert_eq!(derive_reviewed_state(&reviews, false), ReviewedState::Rejected);
+        assert_eq!(derive_reviewed_state(&reviews, true), ReviewedState::Rejected);
+    }
+
+    #[test]
+    fn single_rejection_rejects_non_championship() {
+        let reviews = vec![make_review(ReviewDecision::Rejected)];
+        assert_eq!(derive_reviewed_state(&reviews, false), ReviewedState::Rejected);
+    }
+
+    // ── reviewed_state_str / correction_status_str ──────────────────────────
+
+    #[test]
+    fn reviewed_state_str_covers_all_variants() {
+        assert_eq!(reviewed_state_str(&ReviewedState::Pending), "pending");
+        assert_eq!(reviewed_state_str(&ReviewedState::Approved), "approved");
+        assert_eq!(reviewed_state_str(&ReviewedState::Rejected), "rejected");
+    }
+
+    #[test]
+    fn correction_status_str_covers_all_variants() {
+        assert_eq!(correction_status_str(&CorrectionStatus::Pending), "pending");
+        assert_eq!(correction_status_str(&CorrectionStatus::Approved), "approved");
+        assert_eq!(correction_status_str(&CorrectionStatus::Rejected), "rejected");
+    }
+}

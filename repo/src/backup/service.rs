@@ -321,3 +321,168 @@ pub fn db_path_from_url(url: &str) -> Option<PathBuf> {
     };
     Some(PathBuf::from(path_str))
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Native Rust unit tests
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    // ── db_path_from_url ────────────────────────────────────────────────────
+
+    #[test]
+    fn db_path_from_url_absolute() {
+        let p = db_path_from_url("sqlite:///app/data/motorsport.db").unwrap();
+        assert_eq!(p, PathBuf::from("/app/data/motorsport.db"));
+    }
+
+    #[test]
+    fn db_path_from_url_relative_dot() {
+        let p = db_path_from_url("sqlite://./local.db").unwrap();
+        assert_eq!(p, PathBuf::from("./local.db"));
+    }
+
+    #[test]
+    fn db_path_from_url_relative_bare() {
+        let p = db_path_from_url("sqlite://data.db").unwrap();
+        assert_eq!(p, PathBuf::from("data.db"));
+    }
+
+    #[test]
+    fn db_path_from_url_rejects_non_sqlite() {
+        assert!(db_path_from_url("postgres://localhost/db").is_none());
+        assert!(db_path_from_url("mysql://host/db").is_none());
+    }
+
+    #[test]
+    fn db_path_from_url_rejects_empty() {
+        assert!(db_path_from_url("").is_none());
+    }
+
+    // ── backup_filename format ──────────────────────────────────────────────
+
+    #[test]
+    fn backup_filename_starts_with_prefix() {
+        let name = backup_filename();
+        assert!(name.starts_with(BACKUP_PREFIX));
+    }
+
+    #[test]
+    fn backup_filename_ends_with_extension() {
+        let name = backup_filename();
+        assert!(name.ends_with(&format!(".{BACKUP_EXT}")));
+    }
+
+    #[test]
+    fn backup_filename_has_reasonable_length() {
+        let name = backup_filename();
+        // backup_YYYYMMDD_HHMMSS_microseconds.sqlite → well over 20 chars
+        assert!(name.len() > 20, "backup filename too short: {name}");
+    }
+
+    // ── stage_restore input validation ──────────────────────────────────────
+
+    #[test]
+    fn stage_restore_rejects_path_traversal() {
+        let tmp = tempdir();
+        let err = stage_restore(&tmp, "../evil.sqlite").unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn stage_restore_rejects_forward_slash() {
+        let tmp = tempdir();
+        let err = stage_restore(&tmp, "sub/backup.sqlite").unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn stage_restore_rejects_backslash() {
+        let tmp = tempdir();
+        let err = stage_restore(&tmp, "sub\\backup.sqlite").unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn stage_restore_rejects_wrong_prefix() {
+        let tmp = tempdir();
+        let err = stage_restore(&tmp, "evil_20260101_000000.sqlite").unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn stage_restore_rejects_wrong_extension() {
+        let tmp = tempdir();
+        let err = stage_restore(&tmp, "backup_20260101_000000.db").unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn stage_restore_rejects_nonexistent_file() {
+        let tmp = tempdir();
+        let err = stage_restore(&tmp, "backup_20260101_000000.sqlite").unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)));
+    }
+
+    // ── validate_sqlite_file ────────────────────────────────────────────────
+
+    #[test]
+    fn validate_sqlite_rejects_non_sqlite_file() {
+        let tmp = tempdir();
+        let path = tmp.join("fake.sqlite");
+        fs::write(&path, b"This is not a real SQLite file at all!").unwrap();
+        let err = validate_sqlite_file(&path).unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn validate_sqlite_rejects_empty_file() {
+        let tmp = tempdir();
+        let path = tmp.join("empty.sqlite");
+        fs::write(&path, b"").unwrap();
+        assert!(validate_sqlite_file(&path).is_err());
+    }
+
+    #[test]
+    fn validate_sqlite_accepts_valid_header() {
+        let tmp = tempdir();
+        let path = tmp.join("valid.sqlite");
+        // Write the 16-byte SQLite magic header followed by garbage.
+        let mut data = b"SQLite format 3\0".to_vec();
+        data.extend_from_slice(&[0u8; 100]);
+        fs::write(&path, &data).unwrap();
+        assert!(validate_sqlite_file(&path).is_ok());
+    }
+
+    // ── rotate_backups ──────────────────────────────────────────────────────
+
+    #[test]
+    fn rotate_backups_keeps_at_most_n_files() {
+        let tmp = tempdir();
+        // Create 5 fake backup files with valid naming.
+        for i in 0..5 {
+            let name = format!("backup_20260101_00000{i}.sqlite");
+            fs::write(tmp.join(&name), format!("backup-data-{i}")).unwrap();
+        }
+        rotate_backups(&tmp, 3).unwrap();
+        let remaining = list_backup_files(&tmp).unwrap();
+        assert!(remaining.len() <= 3, "expected <=3 files, got {}", remaining.len());
+    }
+
+    #[test]
+    fn rotate_backups_on_empty_dir_is_ok() {
+        let tmp = tempdir();
+        assert!(rotate_backups(&tmp, 7).is_ok());
+    }
+
+    // ── Helper ──────────────────────────────────────────────────────────────
+
+    fn tempdir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("backup_test_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+}

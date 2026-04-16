@@ -305,17 +305,8 @@ class TestAuditLogImmutability:
 class TestAuditCoverage:
     def test_invoice_creation_is_audited(self, auditor_token, admin_token, ts):
         """Creating an invoice must produce an audit log entry."""
-        # Count entries before
-        before = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=invoice&action=invoice.created&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
-        )
-
         # Create an invoice
-        requests.post(
+        inv = requests.post(
             f"{BASE_URL}/invoices",
             headers=auth_headers(admin_token),
             json={
@@ -325,18 +316,21 @@ class TestAuditCoverage:
                 "tax_rate": 0.0,
             },
             timeout=10,
-        )
+        ).json()
 
-        # Count entries after
-        after = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=invoice&action=invoice.created&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
-        )
+        # The most-recent invoice.created entry must reference the invoice we
+        # just created.  Using limit=1 avoids the ceiling problem when the
+        # total number of entries exceeds the server-side cap (500).
+        entries = requests.get(
+            f"{BASE_URL}/audit/logs?entity_type=invoice&action=invoice.created&limit=1",
+            headers=auth_headers(auditor_token),
+            timeout=10,
+        ).json()
 
-        assert after > before, "Invoice creation must be recorded in the audit log"
+        assert len(entries) == 1, "Expected at least one invoice.created audit entry"
+        assert entries[0]["entity_id"] == inv["id"], (
+            "Most recent invoice.created audit entry must match the invoice we just created"
+        )
 
     def test_payment_recording_is_audited(self, auditor_token, admin_token, ts):
         """Recording a payment must produce an audit log entry."""
@@ -369,14 +363,7 @@ class TestAuditCoverage:
             json={},
             timeout=10,
         )
-        before = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=payment&action=payment.recorded&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
-        )
-        requests.post(
+        pmt = requests.post(
             f"{BASE_URL}/invoices/{inv['id']}/payments",
             headers=auth_headers(admin_token),
             json={
@@ -386,15 +373,16 @@ class TestAuditCoverage:
                 "received_at": "2026-04-01T10:00:00Z",
             },
             timeout=10,
+        ).json()
+        entries = requests.get(
+            f"{BASE_URL}/audit/logs?entity_type=payment&action=payment.recorded&limit=1",
+            headers=auth_headers(auditor_token),
+            timeout=10,
+        ).json()
+        assert len(entries) == 1
+        assert entries[0]["entity_id"] == pmt["id"], (
+            "Most recent payment.recorded audit entry must match the payment we just recorded"
         )
-        after = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=payment&action=payment.recorded&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
-        )
-        assert after > before, "Payment recording must be recorded in the audit log"
 
 
 class TestAuditSensitiveFieldMasking:
@@ -599,27 +587,21 @@ class TestAuditStateTransitionCoverage:
             timeout=10,
         )
 
-        before = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=invoice&action=invoice.issued&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
-        )
         requests.post(
             f"{BASE_URL}/invoices/{inv['id']}/issue",
             headers=auth_headers(admin_token),
             json={},
             timeout=10,
         )
-        after = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=invoice&action=invoice.issued&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
+        entries = requests.get(
+            f"{BASE_URL}/audit/logs?entity_type=invoice&action=invoice.issued&limit=1",
+            headers=auth_headers(auditor_token),
+            timeout=10,
+        ).json()
+        assert len(entries) == 1
+        assert entries[0]["entity_id"] == inv["id"], (
+            "Most recent invoice.issued audit entry must match the invoice we just issued"
         )
-        assert after > before, "invoice.issued must be recorded in the unified audit log"
 
     def test_event_publishing_is_audited(self, auditor_token, admin_token, ts):
         """event.published must produce a unified audit entry."""
@@ -690,7 +672,7 @@ class TestAuditStateTransitionCoverage:
                 timeout=10,
             ).json()
         )
-        requests.patch(
+        requests.post(
             f"{BASE_URL}/vehicles/{vehicle['id']}/status",
             headers=auth_headers(admin_token),
             json={"status": "published", "reason": "Audit coverage test"},
@@ -731,27 +713,21 @@ class TestAuditStateTransitionCoverage:
             timeout=10,
         )
 
-        before = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=result&action=result.submitted&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
-        )
-        requests.post(
+        result = requests.post(
             f"{BASE_URL}/events/{event['id']}/results",
             headers=auth_headers(admin_token),
             json={"participant_id": ts + 8500, "value_numeric": 72000.0, "unit": "milliseconds"},
             timeout=10,
+        ).json()
+        entries = requests.get(
+            f"{BASE_URL}/audit/logs?entity_type=result&action=result.submitted&limit=1",
+            headers=auth_headers(auditor_token),
+            timeout=10,
+        ).json()
+        assert len(entries) == 1
+        assert entries[0]["entity_id"] == result["id"], (
+            "Most recent result.submitted audit entry must match the result we just submitted"
         )
-        after = len(
-            requests.get(
-                f"{BASE_URL}/audit/logs?entity_type=result&action=result.submitted&limit=500",
-                headers=auth_headers(auditor_token),
-                timeout=10,
-            ).json()
-        )
-        assert after > before, "result.submitted must be recorded in the unified audit log"
 
     def test_asset_status_change_is_audited(self, auditor_token, admin_token, ts):
         """asset.status_changed must appear in the unified audit log."""

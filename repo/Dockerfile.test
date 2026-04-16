@@ -2,4 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir pytest requests
+# pytest        — test runner
+# requests      — HTTP client used by the API tests
+# pytest-cov    — coverage plugin for pytest (line + branch coverage)
+# coverage      — the underlying coverage.py engine (explicit install pins it)
+RUN pip install --no-cache-dir \
+        pytest \
+        requests \
+        pytest-cov \
+        coverage

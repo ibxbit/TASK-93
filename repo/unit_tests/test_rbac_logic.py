@@ -232,7 +232,7 @@ ENDPOINT_PERMISSIONS = {
     "GET /vehicles":                            "events_read",
     "GET /vehicles/<id>":                       "events_read",
     "PUT /vehicles/<id>":                       "events_write",
-    "PATCH /vehicles/<id>/status":              "events_write",
+    "POST /vehicles/<id>/status":               "events_write",
     "GET /vehicles/<id>/history":               "events_read",
     # Assets
     "POST /assets":                             "events_write",

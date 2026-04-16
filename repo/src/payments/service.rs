@@ -1033,3 +1033,116 @@ async fn load_refund(
             }
         })
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Native Rust unit tests
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Datelike;
+    use crate::entity::enums::{
+        ExceptionType, PaymentEntryStatus, PaymentMethod, RefundStatus,
+    };
+
+    // ── parse_method ────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_method_all_valid() {
+        assert_eq!(parse_method("cash").unwrap(),          PaymentMethod::Cash);
+        assert_eq!(parse_method("cheque").unwrap(),        PaymentMethod::Cheque);
+        assert_eq!(parse_method("check").unwrap(),         PaymentMethod::Cheque);
+        assert_eq!(parse_method("ach").unwrap(),           PaymentMethod::Ach);
+        assert_eq!(parse_method("bank_transfer").unwrap(), PaymentMethod::BankTransfer);
+        assert_eq!(parse_method("card").unwrap(),          PaymentMethod::Card);
+    }
+
+    #[test]
+    fn parse_method_rejects_unknown() {
+        assert!(parse_method("crypto").is_err());
+        assert!(parse_method("").is_err());
+    }
+
+    #[test]
+    fn method_str_roundtrips() {
+        let variants = [
+            PaymentMethod::Cash, PaymentMethod::Cheque, PaymentMethod::Ach,
+            PaymentMethod::BankTransfer, PaymentMethod::Card,
+        ];
+        for v in variants {
+            let s = method_str(&v);
+            assert_eq!(parse_method(s).unwrap(), v, "roundtrip failed for {s}");
+        }
+    }
+
+    // ── parse_exception_type ────────────────────────────────────────────────
+
+    #[test]
+    fn parse_exception_type_all_valid() {
+        assert_eq!(parse_exception_type("void").unwrap(),     ExceptionType::Void);
+        assert_eq!(parse_exception_type("reversal").unwrap(), ExceptionType::Reversal);
+        assert_eq!(parse_exception_type("dispute").unwrap(),  ExceptionType::Dispute);
+    }
+
+    #[test]
+    fn parse_exception_type_rejects_unknown() {
+        assert!(parse_exception_type("write_off").is_err());
+    }
+
+    #[test]
+    fn exception_type_str_roundtrips() {
+        let variants = [ExceptionType::Void, ExceptionType::Reversal, ExceptionType::Dispute];
+        for v in variants {
+            let s = exception_type_str(&v);
+            assert_eq!(parse_exception_type(s).unwrap(), v);
+        }
+    }
+
+    // ── status / refund status string coverage ──────────────────────────────
+
+    #[test]
+    fn status_str_covers_all_variants() {
+        assert_eq!(status_str(&PaymentEntryStatus::Active),   "active");
+        assert_eq!(status_str(&PaymentEntryStatus::Voided),   "voided");
+        assert_eq!(status_str(&PaymentEntryStatus::Reversed), "reversed");
+        assert_eq!(status_str(&PaymentEntryStatus::Disputed), "disputed");
+    }
+
+    #[test]
+    fn refund_status_str_covers_all_variants() {
+        assert_eq!(refund_status_str(&RefundStatus::PendingFinance), "pending_finance");
+        assert_eq!(refund_status_str(&RefundStatus::PendingAuditor), "pending_auditor");
+        assert_eq!(refund_status_str(&RefundStatus::Approved),       "approved");
+        assert_eq!(refund_status_str(&RefundStatus::Rejected),       "rejected");
+    }
+
+    // ── parse_datetime ──────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_datetime_valid_rfc3339() {
+        let dt = parse_datetime("2026-01-15T12:00:00Z").unwrap();
+        assert_eq!(dt.year(), 2026);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 15);
+    }
+
+    #[test]
+    fn parse_datetime_rejects_garbage() {
+        assert!(parse_datetime("not-a-date").is_err());
+    }
+
+    // ── dec helper ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn dec_positive() {
+        let d = dec(123.45).unwrap();
+        assert_eq!(d, Decimal::from_str_exact("123.45").unwrap());
+    }
+
+    #[test]
+    fn dec_zero() {
+        let d = dec(0.0).unwrap();
+        assert_eq!(d, Decimal::ZERO);
+    }
+}

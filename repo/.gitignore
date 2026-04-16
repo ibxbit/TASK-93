@@ -10,3 +10,6 @@ __pycache__/
 *.sqlite-wal
 *.sqlite-shm
 .DS_Store
+.coverage
+.coverage.*
+coverage_reports/

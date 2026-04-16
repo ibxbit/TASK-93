@@ -83,6 +83,11 @@ services:
   # Integration test runner — used for automated validation.
   # Run with: docker compose run --rm integration-test
   # The `test` profile prevents this service from starting with `docker compose up`.
+  #
+  # pytest-cov produces three artifacts under ./coverage_reports/:
+  #   - term summary (stdout)
+  #   - HTML report  (coverage_reports/html/index.html)
+  #   - XML report   (coverage_reports/coverage.xml, for CI ingestion)
   integration-test:
     profiles: ["test"]
     build:
@@ -97,7 +102,13 @@ services:
     working_dir: /app
     environment:
       - API_URL=http://backend:8000
-    command: pytest unit_tests/ API_tests/ -v
+    command: >-
+      pytest unit_tests/ API_tests/ -v
+      --cov
+      --cov-branch
+      --cov-report=term-missing
+      --cov-report=html:coverage_reports/html
+      --cov-report=xml:coverage_reports/coverage.xml
 
 volumes:
   motorsport_data:

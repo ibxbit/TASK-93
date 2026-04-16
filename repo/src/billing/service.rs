@@ -697,3 +697,139 @@ pub async fn issue_invoice(
     .await?;
     Ok(resp)
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Native Rust unit tests
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    // ── parse_pricing_model ─────────────────────────────────────────────────
+
+    #[test]
+    fn parse_pricing_model_all_valid() {
+        assert_eq!(parse_pricing_model("fixed").unwrap(),        PricingModel::Fixed);
+        assert_eq!(parse_pricing_model("per_unit").unwrap(),     PricingModel::PerUnit);
+        assert_eq!(parse_pricing_model("percentage").unwrap(),   PricingModel::Percentage);
+        assert_eq!(parse_pricing_model("per_duration").unwrap(), PricingModel::PerDuration);
+        assert_eq!(parse_pricing_model("package").unwrap(),      PricingModel::Package);
+    }
+
+    #[test]
+    fn parse_pricing_model_rejects_unknown() {
+        assert!(parse_pricing_model("hourly").is_err());
+        assert!(parse_pricing_model("").is_err());
+    }
+
+    #[test]
+    fn pricing_model_str_roundtrips() {
+        let variants = [
+            PricingModel::Fixed, PricingModel::PerUnit, PricingModel::Percentage,
+            PricingModel::PerDuration, PricingModel::Package,
+        ];
+        for v in variants {
+            assert_eq!(parse_pricing_model(pricing_model_str(&v)).unwrap(), v);
+        }
+    }
+
+    // ── parse_adjustment_type ───────────────────────────────────────────────
+
+    #[test]
+    fn parse_adjustment_type_valid() {
+        assert_eq!(parse_adjustment_type("discount").unwrap(),  AdjustmentType::Discount);
+        assert_eq!(parse_adjustment_type("surcharge").unwrap(), AdjustmentType::Surcharge);
+    }
+
+    #[test]
+    fn parse_adjustment_type_rejects_unknown() {
+        assert!(parse_adjustment_type("rebate").is_err());
+    }
+
+    // ── compute_line_total ──────────────────────────────────────────────────
+
+    #[test]
+    fn line_total_no_adjustment() {
+        let total = compute_line_total(
+            dec!(2.0), dec!(100.0), None, false, None,
+        ).unwrap();
+        assert_eq!(total, dec!(200.0));
+    }
+
+    #[test]
+    fn line_total_fixed_discount() {
+        let total = compute_line_total(
+            dec!(1.0), dec!(500.0),
+            Some(&AdjustmentType::Discount), false, Some(dec!(50.0)),
+        ).unwrap();
+        assert_eq!(total, dec!(450.0));
+    }
+
+    #[test]
+    fn line_total_percentage_discount() {
+        let total = compute_line_total(
+            dec!(1.0), dec!(1000.0),
+            Some(&AdjustmentType::Discount), true, Some(dec!(10.0)),
+        ).unwrap();
+        assert_eq!(total, dec!(900.0));
+    }
+
+    #[test]
+    fn line_total_surcharge() {
+        let total = compute_line_total(
+            dec!(1.0), dec!(200.0),
+            Some(&AdjustmentType::Surcharge), false, Some(dec!(25.0)),
+        ).unwrap();
+        assert_eq!(total, dec!(225.0));
+    }
+
+    #[test]
+    fn line_total_discount_never_goes_negative() {
+        let total = compute_line_total(
+            dec!(1.0), dec!(10.0),
+            Some(&AdjustmentType::Discount), false, Some(dec!(999.0)),
+        ).unwrap();
+        assert_eq!(total, dec!(0.0));
+    }
+
+    #[test]
+    fn line_total_percentage_surcharge() {
+        let total = compute_line_total(
+            dec!(2.0), dec!(100.0),
+            Some(&AdjustmentType::Surcharge), true, Some(dec!(20.0)),
+        ).unwrap();
+        // base=200, surcharge=200*20/100=40 → 240
+        assert_eq!(total, dec!(240.0));
+    }
+
+    // ── status_str / parse_date / dec ───────────────────────────────────────
+
+    #[test]
+    fn status_str_covers_all_invoice_statuses() {
+        assert_eq!(status_str(&InvoiceStatus::Draft),     "draft");
+        assert_eq!(status_str(&InvoiceStatus::Issued),    "issued");
+        assert_eq!(status_str(&InvoiceStatus::Paid),      "paid");
+        assert_eq!(status_str(&InvoiceStatus::Cancelled), "cancelled");
+        assert_eq!(status_str(&InvoiceStatus::Overdue),   "overdue");
+    }
+
+    #[test]
+    fn parse_date_valid() {
+        let d = parse_date("2026-06-15").unwrap();
+        assert_eq!(d, NaiveDate::from_ymd_opt(2026, 6, 15).unwrap());
+    }
+
+    #[test]
+    fn parse_date_invalid_rejects() {
+        assert!(parse_date("not-a-date").is_err());
+        assert!(parse_date("2026-13-01").is_err());
+    }
+
+    #[test]
+    fn dec_helper_converts_f64() {
+        let d = dec(42.5).unwrap();
+        assert_eq!(d, Decimal::from_str_exact("42.5").unwrap());
+    }
+}
