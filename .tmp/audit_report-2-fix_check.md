@@ -35,12 +35,6 @@ This report reviews whether the issues identified in previous audits have been f
 
 ---
 
-## Frontend Issues
-
-- Not applicable (no frontend code in this repository).
-
----
-
 ## Summary
 - All documentation and test coverage gaps have been addressed as far as possible statically.
 - No new material static issues remain.

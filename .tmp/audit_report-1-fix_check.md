@@ -28,21 +28,8 @@ This report reviews whether the issues identified in previous audits have been f
 
 ---
 
-## Frontend Issues
-
-### 1. High - Missing Task Closure Pathways
-- **Original Issue:** No UI for creating/editing assets/results, missing Invoices/Audit modules.
-- **Current Status:** Not applicable (no frontend code in this repo).
-
-### 2. Low - Role-Based Page Level Protection
-- **Original Issue:** No page-level role guards in frontend.
-- **Current Status:** Not applicable (no frontend code in this repo).
-
----
-
 ## Summary
 - All documentation and test coverage gaps have been addressed as far as possible statically.
 - Manual verification is still required for ENCRYPTION_KEY handling and audit log immutability (see docs/manual_verification_checklist.md).
-- Frontend issues are not applicable in this backend-only repository.
 
 **This report is saved as .tmp/audit_report-1-fix_check.md.**

@@ -168,16 +168,6 @@ Resolved from Rocket route macros and `mount` registrations.
   - auth/guards/middleware: spec-level mapping checks only
 - important backend modules NOT tested directly: `repo/src/*/service.rs`, `repo/src/rbac/guards.rs`, `repo/src/middleware/*`, `repo/src/db.rs`, `repo/src/entity/*`.
 
-### Frontend Unit Tests
-- frontend test files: **NONE**
-- frameworks/tools detected: **NONE**
-- components/modules covered: **NONE**
-- important frontend components/modules NOT tested: **N/A (backend-only repo)**
-- **Frontend unit tests: MISSING**
-
-### Cross-Layer Observation
-- Backend-only project. README explicitly states no frontend (`repo/README.md:30`).
-
 ## Tests Check
 - API test classification:
   1. True no-mock HTTP: all `repo/API_tests/*.py`
